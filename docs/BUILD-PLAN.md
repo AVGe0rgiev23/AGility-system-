@@ -123,7 +123,7 @@ The stage that makes the tool worth building. Fable throughout, or Opus after
 1. `scoring.ts` per ENGINES §1, including the full `breakdown` and `assumptions`
    arrays and `inputsHash`.
 2. `estimate.ts` per §2. Calibration applied here and nowhere else.
-3. `runCost.ts` per §3, all three delivery models, both retainer warnings.
+3. `run-cost.ts` per §3, all three delivery models, both retainer warnings.
 4. `roi.ts` per §4, three scenarios, conservative first.
 5. `calibration.ts` per §5.
 6. `buildCalibrationLookup` and the `inputsHash` utility.

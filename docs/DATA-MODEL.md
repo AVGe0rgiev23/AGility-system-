@@ -541,7 +541,7 @@ interface Config {
       id: string
       name: string
       maxHours: number | null         // null = unbounded; exactly one band, last, id 'custom', unpriced
-      floor: number | null            // floor and ceiling both null = no published price
+      floor: number | null            // null only on the custom band = no published price
       ceiling: number | null
     }[]
     supportMonthly: { floor: number; ceiling: number }
@@ -632,7 +632,7 @@ every field has a valid type, and each issue names the field path shown.
 | The agency currency's rate is exactly 1 | `fxRates.rates.EUR` |
 | Every other FX rate is greater than 0 | `fxRates.rates.<currency>` |
 | `pricing.targetHourlyRate` is greater than 0 | `pricing.targetHourlyRate` |
-| A band's `floor` and `ceiling` are both `null` or both numbers | `pricing.bands.<i>.floor` or `.ceiling`, whichever is `null` |
+| Every bounded band (`maxHours` set) has a `floor` and a `ceiling` | `pricing.bands.<i>.floor`, `pricing.bands.<i>.ceiling`, on whichever is `null` |
 | A band's `floor` is not above its `ceiling` | `pricing.bands.<i>.floor` |
 | Exactly one band has `maxHours: null` | `pricing.bands` |
 | When exactly one exists, that unbounded band is the last band | `pricing.bands.<i>.maxHours` |
@@ -656,8 +656,9 @@ Why the less obvious rules exist:
   `CUSTOM_QUOTE` by that band's id (ENGINES §2). A renamed or misplaced catch-all
   band would silently publish a price where there should be none, and a floor or
   ceiling on it would clamp a price the estimate still calls a custom quote.
-- **Floor and ceiling paired.** The estimate clamps the price between them, which
-  needs both or neither.
+- **Only the custom band goes unpriced.** The estimate clamps a bounded band's
+  price between its floor and ceiling. A bounded band without them would price
+  unclamped and raise no flag, publishing a figure nobody set.
 - **`fallbackPatternHours` above 0.** It is used when no pattern is linked; zero
   would quote that opportunity as free.
 - **Whole-number horizon.** NPV sums over discrete years, so a fractional horizon

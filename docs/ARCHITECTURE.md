@@ -51,7 +51,7 @@ Hard rules, enforced by lint, and for engines by lint plus a test:
 src/
   schema/       Zod schemas, inferred types, migrations, fixtures
   storage/      db.ts, repository.ts, sync.ts, transfer.ts
-  engines/      scoring, roi, estimate, runCost, calibration, signals
+  engines/      scoring, roi, estimate, run-cost, calibration, signals
   render/       template engine, view-model flattening, print layout (Stage 3)
   hooks/        useEngagement, useLibrary, useConfig, useDerived
   ui/           shell/, primitives/, views/

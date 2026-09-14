@@ -69,7 +69,7 @@ computeROI(input: {
   now: string
 }): ROIResult
 
-buildCalibrationLookup(records: CalibrationRecord[], config: Config): CalibrationLookup
+buildCalibrationLookup(records: CalibrationRecord[]): CalibrationLookup
 ```
 
 No engine reads the Library. Calibration and the pattern hours that scoring
@@ -265,9 +265,9 @@ up to the pilot floor, and `price / totalHours` has no answer.
 
 Band placement. `band.maxHours === null` means the band is unbounded. Config
 validation (DATA-MODEL, Config, Validation) guarantees bounded bands in strictly
-ascending `maxHours` order, then exactly one unbounded band, last, identified by
-`id === 'custom'`, whose `floor` and `ceiling` are both `null`. Bands are
-compared in stored order:
+ascending `maxHours` order, each with a `floor` and a `ceiling`, then exactly one
+unbounded band, last, identified by `id === 'custom'`, whose `floor` and
+`ceiling` are both `null`. Bands are compared in stored order:
 
 ```
 band = first band where band.maxHours !== null && totalHours <= band.maxHours,
@@ -275,9 +275,9 @@ band = first band where band.maxHours !== null && totalHours <= band.maxHours,
 
 indicativePrice = totalHours × config.pricing.targetHourlyRate
 
-// Config validation guarantees floor and ceiling are both null or both set.
+// Config validation guarantees a floor is null only on the custom band.
 price = band.floor === null
-          ? indicativePrice                      // no published price: no clamp
+          ? indicativePrice                      // custom band, no published price: no clamp
           : clamp(indicativePrice, band.floor, band.ceiling)
 ```
 
@@ -343,7 +343,7 @@ never feeds the price.**
 
 ---
 
-## 3. Run cost engine (`runCost.ts`)
+## 3. Run cost engine (`run-cost.ts`)
 
 Produces the itemised infrastructure and usage sheet the proposal promises, for
 each delivery model.
