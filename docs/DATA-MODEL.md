@@ -529,9 +529,9 @@ interface Config {
     bands: {
       id: string
       name: string
-      maxHours: number
-      floor: number
-      ceiling: number
+      maxHours: number | null         // null = unbounded; exactly one band, last, id 'custom'
+      floor: number | null            // floor and ceiling both null = no published price
+      ceiling: number | null
     }[]
     supportMonthly: { floor: number; ceiling: number }
   }
@@ -585,17 +585,72 @@ interface Config {
 
 Pricing bands, from the published AGility site:
 
-| Band | Max hours | Floor | Ceiling |
-|---|---|---|---|
-| Pilot | 15 | €600 | €900 |
-| Full workflow | 60 | €1,800 | €4,500 |
-| Custom | Infinity | null | null (flag for manual quote) |
+| Band | `id` | Max hours | Floor | Ceiling |
+|---|---|---|---|---|
+| Pilot | `pilot` | 15 | €600 | €900 |
+| Full workflow | `full-workflow` | 60 | €1,800 | €4,500 |
+| Custom | `custom` | `null` (unbounded) | `null` | `null` (flag for manual quote) |
+
+The custom band stores `maxHours: null`, not `Infinity`. `JSON.stringify` turns
+`Infinity` into `null`, so an `Infinity` would not survive the disk mirror or an
+export and import round trip. `null` is the stored meaning of unbounded.
 
 Support retainer: €350–800/month. Target hourly rate: €65, derived from the full
 workflow band at 30–60 hours.
 
-FX rates: `{ EUR: 1, GBP: 0.85, USD: 1.08 }`. GBP and USD are approximations
-Alex updates by hand when they matter.
+FX rates: `{ EUR: 1, GBP: 0.85, USD: 1.08 }`, `lastUpdated: '2026-09-14'`. GBP
+and USD are approximations Alex updates by hand when they matter.
+
+Agency: name `AGility`; `email` and `website` seeded empty, to be filled in
+Settings. Industries: `Professional Services`, `Software / Tech`, `E-commerce`,
+`Operations / Logistics`. `runCostDefaults` seeds empty. Storage seeds
+`autoSyncOnWrite: true` with no folder connected. AI seeds `provider: 'none'`,
+`enabled: false`.
+
+### Validation
+
+`ConfigSchema` enforces these rules on top of the types above. They live in the
+schema, not the Settings screen, because import, folder restore and migration
+never pass through the UI; Settings only renders the messages. The rules run once
+every field has a valid type, and each issue names the field path shown.
+
+| Rule | Issue path |
+|---|---|
+| `agency.email` is empty or a valid email address | `agency.email` |
+| `agency.website` is empty or a valid `https://` URL with a domain host and no leading or trailing whitespace | `agency.website` |
+| The agency currency's rate is exactly 1 | `fxRates.rates.EUR` |
+| Every other FX rate is greater than 0 | `fxRates.rates.<currency>` |
+| `pricing.targetHourlyRate` is greater than 0 | `pricing.targetHourlyRate` |
+| A band's `floor` and `ceiling` are both `null` or both numbers | `pricing.bands.<i>.floor` or `.ceiling`, whichever is `null` |
+| A band's `floor` is not above its `ceiling` | `pricing.bands.<i>.floor` |
+| Exactly one band has `maxHours: null` | `pricing.bands` |
+| When exactly one exists, that unbounded band is the last band | `pricing.bands.<i>.maxHours` |
+| When exactly one exists, that unbounded band has `id: 'custom'` | `pricing.bands.<i>.id` |
+| Bounded `maxHours` values strictly ascend: no repeats, no decreases | `pricing.bands.<i>.maxHours`, on the later band |
+| `pricing.supportMonthly.floor` is not above its `ceiling` | `pricing.supportMonthly.floor` |
+| Each `estimation.overheads` value is in [0, 1) | `estimation.overheads.<key>` |
+| `estimation.contingency` is in [0, 1) | `estimation.contingency` |
+| `estimation.fallbackPatternHours` is greater than 0 | `estimation.fallbackPatternHours` |
+| `scoring.valueCeiling`, `effortCeiling` and `hoursPerEffortPoint` are greater than 0 | `scoring.<key>` |
+| `roi.conservativeFactor` is at most 1 | `roi.conservativeFactor` |
+| `roi.optimisticFactor` is at least 1 | `roi.optimisticFactor` |
+| `roi.discountRate` is in [0, 1) | `roi.discountRate` |
+| `roi.horizonYears` is a whole number, at least 1 | `roi.horizonYears` |
+
+Why the less obvious rules exist:
+
+- **Unbounded band last, with id `custom`.** Estimation takes the first band that
+  fits and falls through to the unbounded band, and it flags `CUSTOM_QUOTE` by
+  that band's id (ENGINES §2). A renamed or misplaced catch-all band would
+  silently publish a price where there should be none.
+- **Floor and ceiling paired.** The estimate clamps the price between them, which
+  needs both or neither.
+- **`fallbackPatternHours` above 0.** It is used when no pattern is linked; zero
+  would quote that opportunity as free.
+- **Whole-number horizon.** NPV sums over discrete years, so a fractional horizon
+  has no meaning.
+- **Positive scoring ceilings.** Both ceilings divide the scores, and zero hours
+  per effort point would make every effort factor free.
 
 ## Storage layout
 

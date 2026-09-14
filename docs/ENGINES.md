@@ -234,10 +234,14 @@ totalHours     = subtotalHours × (1 + contingency)          // × 1.15
 // combined: totalHours = calibratedHours × 1.702
 ```
 
-Band placement:
+Band placement. `band.maxHours === null` means the band is unbounded. Config
+validation (DATA-MODEL, Config, Validation) guarantees bounded bands in strictly
+ascending `maxHours` order, then exactly one unbounded band, last, identified by
+`id === 'custom'`. Bands are compared in stored order:
 
 ```
-band = first band where totalHours <= band.maxHours, else the 'custom' band
+band = first band where band.maxHours !== null && totalHours <= band.maxHours,
+       else the unbounded band (maxHours === null, id === 'custom')
 
 indicativePrice = totalHours × config.pricing.targetHourlyRate
 
