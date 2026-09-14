@@ -30,7 +30,7 @@ export const ConfigSchema = z.object({
         name: z.string(),
         // Null means unbounded. Infinity would not survive JSON, which the disk mirror and export rely on.
         maxHours: z.number().nullable(),
-        // Null floor and ceiling mean no published price: the estimate flags CUSTOM_QUOTE.
+        // Null only on the custom band, meaning no published price: the estimate flags CUSTOM_QUOTE.
         floor: z.number().nullable(),
         ceiling: z.number().nullable(),
       }),
@@ -121,13 +121,18 @@ export const ConfigSchema = z.object({
     issue(['pricing', 'targetHourlyRate'], 'Target hourly rate must be greater than 0')
   }
 
-  // The estimate clamps between floor and ceiling, which needs both or neither.
+  // Only the custom band may go unpriced. A bounded band without a floor or ceiling would
+  // price unclamped and raise no flag, publishing a figure nobody set. The custom band's
+  // own prices are checked with the unbounded-band rules below.
   for (const [index, band] of pricing.bands.entries()) {
-    if (band.floor === null && band.ceiling !== null) {
-      issue(['pricing', 'bands', index, 'floor'], `Band '${band.id}' has a ceiling but no floor: set both or neither`)
-    } else if (band.floor !== null && band.ceiling === null) {
-      issue(['pricing', 'bands', index, 'ceiling'], `Band '${band.id}' has a floor but no ceiling: set both or neither`)
-    } else if (band.floor !== null && band.ceiling !== null && band.floor > band.ceiling) {
+    if (band.maxHours === null) continue
+    if (band.floor === null) {
+      issue(['pricing', 'bands', index, 'floor'], `Band '${band.id}' needs a floor; only the custom band has no price`)
+    }
+    if (band.ceiling === null) {
+      issue(['pricing', 'bands', index, 'ceiling'], `Band '${band.id}' needs a ceiling; only the custom band has no price`)
+    }
+    if (band.floor !== null && band.ceiling !== null && band.floor > band.ceiling) {
       issue(['pricing', 'bands', index, 'floor'], `Band '${band.id}' floor ${band.floor} is above its ceiling ${band.ceiling}`)
     }
   }

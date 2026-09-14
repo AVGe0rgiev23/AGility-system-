@@ -185,9 +185,19 @@ describe('ConfigSchema consistency rules', () => {
     expect(pathsAfter((c) => (c.fxRates.rates.EUR = 0))).toEqual(['fxRates.rates.EUR'])
   })
 
-  it('a band floor and ceiling must be both null or both set', () => {
+  it('every bounded band must have a floor and a ceiling', () => {
     expect(pathsAfter((c) => (band(c, 'pilot').ceiling = null))).toEqual(['pricing.bands.0.ceiling'])
     expect(pathsAfter((c) => (band(c, 'pilot').floor = null))).toEqual(['pricing.bands.0.floor'])
+    const unpriced = (c: Config) => {
+      const fullWorkflow = band(c, 'full-workflow')
+      fullWorkflow.floor = null
+      fullWorkflow.ceiling = null
+    }
+    expect(pathsAfter(unpriced)).toEqual(['pricing.bands.1.floor', 'pricing.bands.1.ceiling'])
+    expect(messagesAfter(unpriced)).toEqual([
+      "Band 'full-workflow' needs a floor; only the custom band has no price",
+      "Band 'full-workflow' needs a ceiling; only the custom band has no price",
+    ])
   })
 
   it('a band floor must not be above its ceiling', () => {
@@ -196,7 +206,13 @@ describe('ConfigSchema consistency rules', () => {
   })
 
   it('exactly one band must have no max hours', () => {
-    expect(pathsAfter((c) => (band(c, 'custom').maxHours = 200))).toEqual(['pricing.bands'])
+    const noneUnbounded = (c: Config) => {
+      const custom = band(c, 'custom')
+      custom.maxHours = 200
+      custom.floor = 5000
+      custom.ceiling = 9000
+    }
+    expect(pathsAfter(noneUnbounded)).toEqual(['pricing.bands'])
     expect(pathsAfter((c) => (band(c, 'full-workflow').maxHours = null))).toEqual(['pricing.bands'])
   })
 
