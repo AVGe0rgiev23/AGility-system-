@@ -2,6 +2,9 @@ import { z } from 'zod'
 import { RunCostLineItemSchema } from './run-cost'
 import { CurrencySchema } from './traced'
 
+const EmailSchema = z.email()
+const HttpsUrlSchema = z.url({ protocol: /^https$/, hostname: z.regexes.domain })
+
 export const ConfigSchema = z.object({
   agency: z.object({
     name: z.string(),
@@ -83,6 +86,121 @@ export const ConfigSchema = z.object({
     provider: z.enum(['none', 'anthropic', 'openai', 'openrouter', 'local']),
     enabled: z.boolean(),
   }),
+}).superRefine((config, ctx) => {
+  // These rules live in the schema rather than the Settings screen because import, folder
+  // restore and migration never pass through the UI. Each keeps a figure that reaches an
+  // engine or a proposal well-defined.
+  const issue = (path: (string | number)[], message: string) => {
+    ctx.addIssue({ code: 'custom', path, message })
+  }
+  const isFraction = (value: number) => value >= 0 && value < 1
+
+  // Printed on proposals, so a malformed value is worse than none.
+  const { email, website } = config.agency
+  if (email !== '' && !EmailSchema.safeParse(email).success) {
+    issue(['agency', 'email'], `'${email}' is not a valid email address`)
+  }
+  // The URL parser trims whitespace, so a padded value would pass it yet print padded.
+  if (website !== '' && (website.trim() !== website || !HttpsUrlSchema.safeParse(website).success)) {
+    issue(['agency', 'website'], `'${website}' is not a valid https:// URL`)
+  }
+
+  for (const currency of CurrencySchema.options) {
+    const rate = config.fxRates.rates[currency]
+    if (currency === config.agencyCurrency) {
+      if (rate !== 1) {
+        issue(['fxRates', 'rates', currency], `${currency} is the agency currency, so its rate must be exactly 1`)
+      }
+    } else if (rate <= 0) {
+      issue(['fxRates', 'rates', currency], `${currency} rate must be greater than 0 units per 1 ${config.agencyCurrency}`)
+    }
+  }
+
+  const { pricing } = config
+  if (pricing.targetHourlyRate <= 0) {
+    issue(['pricing', 'targetHourlyRate'], 'Target hourly rate must be greater than 0')
+  }
+
+  // The estimate clamps between floor and ceiling, which needs both or neither.
+  for (const [index, band] of pricing.bands.entries()) {
+    if (band.floor === null && band.ceiling !== null) {
+      issue(['pricing', 'bands', index, 'floor'], `Band '${band.id}' has a ceiling but no floor: set both or neither`)
+    } else if (band.floor !== null && band.ceiling === null) {
+      issue(['pricing', 'bands', index, 'ceiling'], `Band '${band.id}' has a floor but no ceiling: set both or neither`)
+    } else if (band.floor !== null && band.ceiling !== null && band.floor > band.ceiling) {
+      issue(['pricing', 'bands', index, 'floor'], `Band '${band.id}' floor ${band.floor} is above its ceiling ${band.ceiling}`)
+    }
+  }
+
+  // Band placement takes the first band that fits and falls through to the unbounded one,
+  // and ENGINES §2 flags CUSTOM_QUOTE by its id. A renamed or misplaced catch-all band
+  // would silently publish a price where there should be none.
+  const unboundedIndexes = pricing.bands.flatMap((band, index) => (band.maxHours === null ? [index] : []))
+  const [unboundedIndex] = unboundedIndexes
+  if (unboundedIndexes.length !== 1 || unboundedIndex === undefined) {
+    issue(['pricing', 'bands'], `Exactly one band must have no max hours; found ${unboundedIndexes.length}`)
+  } else {
+    if (unboundedIndex !== pricing.bands.length - 1) {
+      issue(['pricing', 'bands', unboundedIndex, 'maxHours'], 'The band with no max hours must be the last band')
+    }
+    if (pricing.bands[unboundedIndex]?.id !== 'custom') {
+      issue(['pricing', 'bands', unboundedIndex, 'id'], "The band with no max hours must have id 'custom'")
+    }
+  }
+
+  let previousMaxHours: number | null = null
+  for (const [index, band] of pricing.bands.entries()) {
+    if (band.maxHours === null) continue
+    if (previousMaxHours !== null && band.maxHours === previousMaxHours) {
+      issue(['pricing', 'bands', index, 'maxHours'], `Band '${band.id}' repeats max hours ${band.maxHours}`)
+    } else if (previousMaxHours !== null && band.maxHours < previousMaxHours) {
+      issue(
+        ['pricing', 'bands', index, 'maxHours'],
+        `Band '${band.id}' max hours ${band.maxHours} must be above the previous band's ${previousMaxHours}`,
+      )
+    }
+    previousMaxHours = band.maxHours
+  }
+
+  if (pricing.supportMonthly.floor > pricing.supportMonthly.ceiling) {
+    issue(['pricing', 'supportMonthly', 'floor'], 'Support retainer floor is above its ceiling')
+  }
+
+  const { estimation } = config
+  for (const [key, value] of Object.entries(estimation.overheads)) {
+    if (!isFraction(value)) {
+      issue(['estimation', 'overheads', key], `The ${key} overhead must be at least 0 and below 1`)
+    }
+  }
+  if (!isFraction(estimation.contingency)) {
+    issue(['estimation', 'contingency'], 'Contingency must be at least 0 and below 1')
+  }
+  // Used when no pattern is linked; zero would quote that opportunity as free.
+  if (estimation.fallbackPatternHours <= 0) {
+    issue(['estimation', 'fallbackPatternHours'], 'Fallback pattern hours must be greater than 0')
+  }
+
+  // Both ceilings divide the scores, and zero hours per effort point would make every effort factor free.
+  for (const key of ['valueCeiling', 'effortCeiling', 'hoursPerEffortPoint'] as const) {
+    if (config.scoring[key] <= 0) {
+      issue(['scoring', key], `${key} must be greater than 0`)
+    }
+  }
+
+  const { roi } = config
+  if (roi.conservativeFactor > 1) {
+    issue(['roi', 'conservativeFactor'], 'The conservative factor must be at most 1')
+  }
+  if (roi.optimisticFactor < 1) {
+    issue(['roi', 'optimisticFactor'], 'The optimistic factor must be at least 1')
+  }
+  if (!isFraction(roi.discountRate)) {
+    issue(['roi', 'discountRate'], 'The discount rate must be at least 0 and below 1')
+  }
+  // NPV sums over discrete years, so a fractional horizon has no meaning.
+  if (!Number.isInteger(roi.horizonYears) || roi.horizonYears < 1) {
+    issue(['roi', 'horizonYears'], 'The horizon must be a whole number of years, at least 1')
+  }
 })
 export type Config = z.infer<typeof ConfigSchema>
 
