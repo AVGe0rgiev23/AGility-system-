@@ -64,19 +64,44 @@ describe('EstimateResultSchema', () => {
       'CUSTOM_QUOTE',
       'LOW_CONFIDENCE',
       'UNCALIBRATED_PATTERN',
+      'EMPTY_SCOPE',
     ])
     expect(issuePaths(EstimateResultSchema, { ...estimateResult(), flags: ['OVERPRICED'] })).toEqual([
       'flags.0',
     ])
   })
 
-  it('rejects a non-finite effective hourly rate, as a zero-hour division would produce', () => {
+  it('accepts an empty-scope result with no band and no effective hourly rate', () => {
+    const empty = {
+      ...estimateResult(),
+      calibratedHours: 0,
+      overheadBreakdown: [],
+      contingencyHours: 0,
+      totalHours: 0,
+      bandId: null,
+      indicativePrice: 0,
+      price: 0,
+      effectiveHourlyRate: null,
+      flags: ['EMPTY_SCOPE'],
+      perOpportunity: [],
+    }
+    expect(EstimateResultSchema.parse(empty)).toEqual(empty)
+  })
+
+  it('requires bandId and effectiveHourlyRate to be present, even as null', () => {
+    const { bandId: _a, effectiveHourlyRate: _b, ...withoutBoth } = estimateResult()
+    expect(issuePaths(EstimateResultSchema, withoutBoth)).toEqual(['bandId', 'effectiveHourlyRate'])
+  })
+
+  it('rejects a non-finite effective hourly rate, as an unguarded zero-hour division would produce', () => {
     expect(
       issuePaths(EstimateResultSchema, { ...estimateResult(), effectiveHourlyRate: Infinity }),
     ).toEqual(['effectiveHourlyRate'])
   })
 
   it('infers the spec types', () => {
+    expectTypeOf<EstimateResult['bandId']>().toEqualTypeOf<string | null>()
+    expectTypeOf<EstimateResult['effectiveHourlyRate']>().toEqualTypeOf<number | null>()
     expectTypeOf<EstimateResult['advisoryBlueprintHours']>().toEqualTypeOf<number | null>()
     expectTypeOf<EstimateResult['perOpportunity'][number]['trustworthy']>().toEqualTypeOf<boolean>()
   })

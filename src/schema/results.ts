@@ -41,6 +41,7 @@ export const EstimateFlagSchema = z.enum([
   'CUSTOM_QUOTE',
   'LOW_CONFIDENCE',
   'UNCALIBRATED_PATTERN',
+  'EMPTY_SCOPE',
 ])
 export type EstimateFlag = z.infer<typeof EstimateFlagSchema>
 
@@ -49,10 +50,12 @@ export const EstimateResultSchema = z.object({
   overheadBreakdown: z.array(z.object({ label: z.string(), hours: z.number() })),
   contingencyHours: z.number(),
   totalHours: z.number(),
-  bandId: z.string(),
+  // Null when totalHours is 0 (EMPTY_SCOPE). Placing an empty scope would clamp it up to a band floor.
+  bandId: z.string().nullable(),
   indicativePrice: z.number(),
   price: z.number(),
-  effectiveHourlyRate: z.number(),
+  // price / totalHours. Null when totalHours is 0, where the division has no answer.
+  effectiveHourlyRate: z.number().nullable(),
   flags: z.array(EstimateFlagSchema),
   perOpportunity: z.array(
     z.object({
