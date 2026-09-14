@@ -1,0 +1,118 @@
+import { z } from 'zod'
+import { DeliveryModelSchema } from './company'
+import { SourceSchema, TracedValueSchema } from './traced'
+
+// Engine results are cached on records but never authoritative: a mismatched
+// inputsHash triggers a recompute. They are still validated on every read.
+
+export const ScoringResultSchema = z.object({
+  // EUR, unweighted. The only value figure that may reach a client.
+  annualValue: z.number(),
+  // Internal ranking only. Never shown to a client.
+  weightedValue: z.number(),
+  valueScore: z.number(),
+  effortPoints: z.number(),
+  // Uncalibrated. Calibration is applied in estimation and nowhere else.
+  rawBuildHours: z.number(),
+  effortScore: z.number(),
+  confidence: z.number(),
+  priorityIndex: z.number(),
+  quadrant: z.enum(['quick-win', 'strategic', 'fill-in', 'avoid']),
+  hoursSavedPerMonth: z.number(),
+  breakdown: z.array(
+    z.object({
+      label: z.string(),
+      value: z.number(),
+      unit: z.string(),
+      source: SourceSchema,
+      formula: z.string(),
+    }),
+  ),
+  assumptions: z.array(TracedValueSchema),
+  warnings: z.array(z.string()),
+  inputsHash: z.string(),
+  computedAt: z.string(),
+})
+export type ScoringResult = z.infer<typeof ScoringResultSchema>
+
+export const EstimateFlagSchema = z.enum([
+  'UNDERPRICED',
+  'BELOW_FLOOR',
+  'CUSTOM_QUOTE',
+  'LOW_CONFIDENCE',
+  'UNCALIBRATED_PATTERN',
+])
+export type EstimateFlag = z.infer<typeof EstimateFlagSchema>
+
+export const EstimateResultSchema = z.object({
+  calibratedHours: z.number(),
+  overheadBreakdown: z.array(z.object({ label: z.string(), hours: z.number() })),
+  contingencyHours: z.number(),
+  totalHours: z.number(),
+  bandId: z.string(),
+  indicativePrice: z.number(),
+  price: z.number(),
+  effectiveHourlyRate: z.number(),
+  flags: z.array(EstimateFlagSchema),
+  perOpportunity: z.array(
+    z.object({
+      opportunityId: z.string(),
+      rawHours: z.number(),
+      multiplier: z.number(),
+      trustworthy: z.boolean(),
+      calibratedHours: z.number(),
+    }),
+  ),
+  // Cross-check only. Never feeds the price.
+  advisoryBlueprintHours: z.number().nullable(),
+  inputsHash: z.string(),
+  computedAt: z.string(),
+})
+export type EstimateResult = z.infer<typeof EstimateResultSchema>
+
+export const RunCostResultSchema = z.object({
+  perModel: z.record(
+    DeliveryModelSchema,
+    z.object({
+      clientMonthly: z.number(),
+      agencyMonthly: z.number(),
+      agencyAnnual: z.number(),
+      lineItems: z.array(
+        z.object({ label: z.string(), monthly: z.number(), paidBy: z.string() }),
+      ),
+    }),
+  ),
+  selectedModel: DeliveryModelSchema,
+  clientMonthly: z.number(),
+  agencyMonthly: z.number(),
+  agencyAnnual: z.number(),
+  warnings: z.array(z.string()),
+  inputsHash: z.string(),
+  computedAt: z.string(),
+})
+export type RunCostResult = z.infer<typeof RunCostResultSchema>
+
+export const ROIResultSchema = z.object({
+  scenarios: z.record(
+    z.enum(['conservative', 'expected', 'optimistic']),
+    z.object({
+      grossAnnualValue: z.number(),
+      netAnnualBenefit: z.number(),
+      // null when the running cost meets or exceeds the value: there is no payback.
+      paybackMonths: z.number().nullable(),
+      roiYear1: z.number(),
+      roiYear3: z.number(),
+      npv: z.number(),
+    }),
+  ),
+  hoursSavedPerMonth: z.number(),
+  hoursSavedPerYear: z.number(),
+  implementationCost: z.number(),
+  annualRunCost: z.number(),
+  assumptions: z.array(TracedValueSchema),
+  lowestConfidence: z.number(),
+  warnings: z.array(z.string()),
+  inputsHash: z.string(),
+  computedAt: z.string(),
+})
+export type ROIResult = z.infer<typeof ROIResultSchema>
