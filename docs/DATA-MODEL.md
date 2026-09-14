@@ -53,7 +53,7 @@ to something the client actually said.
 The agency currency is EUR. Company currency may differ.
 
 ```ts
-type Currency = 'EUR' | 'BGN' | 'GBP' | 'USD'
+type Currency = 'EUR' | 'GBP' | 'USD'
 ```
 
 - Every money `TracedValue` carries its `currency`.
@@ -61,9 +61,12 @@ type Currency = 'EUR' | 'BGN' | 'GBP' | 'USD'
   converted on the way in using `Config.fxRates`.
 - Display converts back to the company currency where it helps the client.
 - `Config.fxRates` is a hand-maintained table of units per 1 EUR, with a
-  `lastUpdated` date. BGN is pegged at 1.95583 and never changes. GBP and USD
-  are approximations; the UI shows the `lastUpdated` date next to any converted
-  figure so a stale rate is visible rather than silent.
+  `lastUpdated` date. GBP and USD are approximations; the UI shows the
+  `lastUpdated` date next to any converted figure so a stale rate is visible
+  rather than silent.
+- BGN is deliberately absent. Bulgaria adopted the euro on 1 January 2026 at
+  1.95583 BGN per EUR, and the euro has been its sole currency since
+  1 February 2026, so Bulgarian companies are EUR companies.
 
 ## Engagement
 
@@ -591,8 +594,8 @@ Pricing bands, from the published AGility site:
 Support retainer: €350–800/month. Target hourly rate: €65, derived from the full
 workflow band at 30–60 hours.
 
-FX rates: `{ EUR: 1, BGN: 1.95583, GBP: 0.85, USD: 1.08 }`. BGN is a hard peg.
-The other two are approximations Alex updates by hand when they matter.
+FX rates: `{ EUR: 1, GBP: 0.85, USD: 1.08 }`. GBP and USD are approximations
+Alex updates by hand when they matter.
 
 ## Storage layout
 

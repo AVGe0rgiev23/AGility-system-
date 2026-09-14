@@ -93,8 +93,8 @@ export function defaultConfig(): Config {
     agencyCurrency: 'EUR',
     fxRates: {
       lastUpdated: '2026-09-14',
-      // BGN is a hard peg. GBP and USD are approximations, updated by hand when they matter.
-      rates: { EUR: 1, BGN: 1.95583, GBP: 0.85, USD: 1.08 },
+      // GBP and USD are approximations, updated by hand when they matter.
+      rates: { EUR: 1, GBP: 0.85, USD: 1.08 },
     },
     industries: ['Professional Services', 'Software / Tech', 'E-commerce', 'Operations / Logistics'],
     pricing: {

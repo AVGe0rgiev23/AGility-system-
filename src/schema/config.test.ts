@@ -21,10 +21,10 @@ describe('defaultConfig', () => {
     ])
   })
 
-  it('seeds the FX table from DATA-MODEL, with BGN at its hard peg', () => {
+  it('seeds the FX table from DATA-MODEL', () => {
     expect(defaultConfig().fxRates).toEqual({
       lastUpdated: '2026-09-14',
-      rates: { EUR: 1, BGN: 1.95583, GBP: 0.85, USD: 1.08 },
+      rates: { EUR: 1, GBP: 0.85, USD: 1.08 },
     })
   })
 
@@ -92,7 +92,7 @@ describe('ConfigSchema', () => {
   })
 
   it('accepts only EUR as the agency currency', () => {
-    expect(issuePaths(ConfigSchema, { ...defaultConfig(), agencyCurrency: 'BGN' })).toEqual(['agencyCurrency'])
+    expect(issuePaths(ConfigSchema, { ...defaultConfig(), agencyCurrency: 'GBP' })).toEqual(['agencyCurrency'])
   })
 
   it('requires a rate for every supported currency', () => {

@@ -3,10 +3,11 @@ import { z } from 'zod'
 export const SourceSchema = z.enum(['client-stated', 'measured', 'estimated', 'default'])
 export type Source = z.infer<typeof SourceSchema>
 
-export const CurrencySchema = z.enum(['EUR', 'BGN', 'GBP', 'USD'])
+// No BGN: Bulgaria adopted the euro on 1 January 2026, so Bulgarian companies are EUR companies.
+export const CurrencySchema = z.enum(['EUR', 'GBP', 'USD'])
 export type Currency = z.infer<typeof CurrencySchema>
 
-// A unit is money when its leading segment is a currency code ('EUR', 'BGN/hour').
+// A unit is money when its leading segment is a currency code ('EUR', 'GBP/hour').
 // Engines convert using `currency`, so it must be present and agree with the unit.
 export function moneyUnitCurrency(unit: string): Currency | null {
   const parsed = CurrencySchema.safeParse(unit.split('/')[0])

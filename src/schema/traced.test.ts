@@ -13,7 +13,7 @@ import {
 describe('Source and Currency', () => {
   it('accept exactly the spec values', () => {
     expect(SourceSchema.options).toEqual(['client-stated', 'measured', 'estimated', 'default'])
-    expect(CurrencySchema.options).toEqual(['EUR', 'BGN', 'GBP', 'USD'])
+    expect(CurrencySchema.options).toEqual(['EUR', 'GBP', 'USD'])
   })
 
   it('reject anything else', () => {
@@ -21,16 +21,21 @@ describe('Source and Currency', () => {
     expect(CurrencySchema.safeParse('JPY').success).toBe(false)
     expect(CurrencySchema.safeParse('eur').success).toBe(false)
   })
+
+  it('reject BGN, which Bulgaria replaced with the euro', () => {
+    expect(CurrencySchema.safeParse('BGN').success).toBe(false)
+  })
 })
 
 describe('moneyUnitCurrency', () => {
   it('reads the currency from the leading unit segment', () => {
     expect(moneyUnitCurrency('EUR')).toBe('EUR')
-    expect(moneyUnitCurrency('BGN/hour')).toBe('BGN')
+    expect(moneyUnitCurrency('USD/hour')).toBe('USD')
     expect(moneyUnitCurrency('GBP/error')).toBe('GBP')
   })
 
   it('returns null for non-money units', () => {
+    expect(moneyUnitCurrency('BGN/hour')).toBeNull()
     expect(moneyUnitCurrency('hours/week')).toBeNull()
     expect(moneyUnitCurrency('percent')).toBeNull()
     expect(moneyUnitCurrency('count')).toBeNull()
@@ -55,7 +60,12 @@ describe('TracedValueSchema', () => {
   })
 
   it('rejects a currency that contradicts the unit', () => {
-    expect(issuePaths(TracedValueSchema, { ...tracedMoney(), currency: 'EUR' })).toEqual(['currency'])
+    expect(issuePaths(TracedValueSchema, { ...tracedMoney(), currency: 'GBP' })).toEqual(['currency'])
+  })
+
+  it('rejects a stored BGN value, as an old export or hand-edited file would contain', () => {
+    const stored = { value: 32, unit: 'BGN/hour', currency: 'BGN', source: 'client-stated' }
+    expect(issuePaths(TracedValueSchema, roundTrip(stored))).toEqual(['currency'])
   })
 
   it('rejects an unknown source', () => {
@@ -83,7 +93,7 @@ describe('TracedValueSchema', () => {
 
   it('infers the spec types', () => {
     expectTypeOf<Source>().toEqualTypeOf<'client-stated' | 'measured' | 'estimated' | 'default'>()
-    expectTypeOf<Currency>().toEqualTypeOf<'EUR' | 'BGN' | 'GBP' | 'USD'>()
+    expectTypeOf<Currency>().toEqualTypeOf<'EUR' | 'GBP' | 'USD'>()
     expectTypeOf<TracedValue['value']>().toEqualTypeOf<number>()
     expectTypeOf<TracedValue['source']>().toEqualTypeOf<Source>()
     expectTypeOf<TracedValue['currency']>().toEqualTypeOf<Currency | undefined>()

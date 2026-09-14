@@ -37,7 +37,7 @@ export function tracedHours(): TracedValue {
 }
 
 export function tracedMoney(): TracedValue {
-  return { value: 32, unit: 'BGN/hour', currency: 'BGN', source: 'estimated' }
+  return { value: 16, unit: 'EUR/hour', currency: 'EUR', source: 'estimated' }
 }
 
 export function tracedPercent(): TracedValue {
@@ -69,7 +69,7 @@ export function company(): Company {
     industry: 'logistics',
     employeeCount: 40,
     locationCountry: 'BG',
-    currency: 'BGN',
+    currency: 'EUR',
     blendedHourlyCost: tracedMoney(),
     detectedStack: [detectedTool()],
     statedTools: ['Google Sheets', 'HubSpot'],
