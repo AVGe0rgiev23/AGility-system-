@@ -43,7 +43,7 @@ const banUi = {
 }
 
 const enginePurity = 'Engines are pure: plain data in, plain data out, imports from schema/ only.'
-const banEngineLayers = { regex: '(^|/)(storage|hooks|render|ui)(/|$)', message: enginePurity }
+const banEngineLayers = { regex: '(^|/)(storage|hooks|render|ui|app)(/|$)', message: enginePurity }
 const banEngineRuntimes = { regex: '^(react|react-dom|dexie)(/|$)', message: enginePurity }
 const injectedClock = 'Engines take the current time as an injected input.'
 
@@ -115,6 +115,7 @@ export default defineConfig(
         'error',
         { object: 'Date', property: 'now', message: injectedClock },
         { object: 'Math', property: 'random', message: 'Engines must be deterministic.' },
+        { object: 'crypto', property: 'randomUUID', message: 'Engines must be deterministic.' },
       ],
       'no-restricted-syntax': [
         'error',
