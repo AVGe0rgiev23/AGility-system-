@@ -1,11 +1,26 @@
 import type { z } from 'zod'
 import type { Blueprint } from '../blueprint'
 import type { Company, Contact, DetectedTool, TimestampedNote } from '../company'
+import { defaultConfig } from '../config'
 import type { Answer, DiscoverySession, Question, QuestionSet } from '../discovery'
+import type { Engagement } from '../engagement'
+import type { CalibrationRecord, DocumentTemplate, Library, Pattern } from '../library'
+import type { Meta } from '../meta'
 import type { Opportunity } from '../opportunity'
 import type { Process, ProcessStep } from '../process'
 import type { EstimateResult, ROIResult, RunCostResult, ScoringResult } from '../results'
 import type { RunCostLineItem } from '../run-cost'
+import type {
+  ArtifactRef,
+  ArtifactSet,
+  Deliverable,
+  Phase,
+  Project,
+  ProjectScope,
+  Task,
+  TimeEntry,
+} from '../scope'
+import type { WholeStore } from '../store'
 import type { TracedValue } from '../traced'
 
 // Builders return fresh objects so a test can mutate or spread without leaking into others.
@@ -318,6 +333,228 @@ export function questionSet(): QuestionSet {
     kind: 'discovery',
     appliesTo: { industries: ['logistics'], minEmployees: 5 },
     questions: [question()],
+  }
+}
+
+export function deliverable(): Deliverable {
+  return {
+    id: 'del-1',
+    name: 'Quote intake automation',
+    description: 'Quote emails become HubSpot deals without retyping.',
+    acceptanceCriteria: ['A test quote email creates exactly one HubSpot deal within 2 minutes'],
+    opportunityId: 'opp-1',
+  }
+}
+
+export function phase(): Phase {
+  return { id: 'ph-1', name: 'Build', description: 'Build and test the intake flow.', order: 1, estimatedWeeks: 2 }
+}
+
+export function projectScope(): ProjectScope {
+  return {
+    selectedOpportunityIds: ['opp-1'],
+    deliveryModel: 'hybrid',
+    deliverables: [deliverable()],
+    exclusions: ['Historic email backfill'],
+    assumptions: ['HubSpot API access is granted in week 1'],
+    phases: [phase()],
+    supportRetainerMonthly: 350,
+    runCostItems: [runCostLineItem(), usageRunCostLineItem()],
+    estimate: estimateResult(),
+    runCost: runCostResult(),
+    roi: roiResult(),
+  }
+}
+
+export function artifactRef(): ArtifactRef {
+  return {
+    templateId: 'tpl-proposal',
+    overrides: [
+      {
+        sectionId: 'executive-summary',
+        content: 'Rewritten opening paragraph.',
+        editedAt: '2026-09-12T14:00:00.000Z',
+        baseInputsHash: 'h-estimate',
+      },
+    ],
+    lastRenderedAt: '2026-09-12T14:05:00.000Z',
+    sentAt: null,
+    version: 2,
+  }
+}
+
+export function artifactSet(): ArtifactSet {
+  return {
+    teardown: null,
+    proposal: artifactRef(),
+    sow: null,
+    projectPlan: null,
+    handoverDocs: null,
+    caseStudy: null,
+  }
+}
+
+export function task(): Task {
+  return {
+    id: 'task-1',
+    phaseId: 'ph-1',
+    title: 'Parse quote emails',
+    patternId: 'pat-email-triage',
+    estimatedHours: 6,
+    actualHours: null,
+    status: 'doing',
+  }
+}
+
+export function timeEntry(): TimeEntry {
+  return { id: 'te-1', taskId: 'task-1', minutes: 90, at: '2026-09-13T11:00:00.000Z', note: 'Parser first pass' }
+}
+
+export function project(): Project {
+  return {
+    startedAt: '2026-09-13T09:00:00.000Z',
+    phases: [phase()],
+    tasks: [task()],
+    timeLog: [timeEntry()],
+    status: 'active',
+    deliveredAt: null,
+  }
+}
+
+// A brand-new lead: nothing captured yet beyond the company.
+export function newEngagement(): Engagement {
+  return {
+    id: 'eng-2',
+    createdAt: '2026-09-14T08:00:00.000Z',
+    updatedAt: '2026-09-14T08:00:00.000Z',
+    company: {
+      name: 'Solo Bakery',
+      industry: 'E-commerce',
+      currency: 'EUR',
+      blendedHourlyCost: null,
+      detectedStack: [],
+      statedTools: [],
+      constraints: { compliance: [] },
+    },
+    contacts: [],
+    stage: 'LEAD',
+    source: 'inbound-form',
+    stageHistory: [{ stage: 'LEAD', at: '2026-09-14T08:00:00.000Z' }],
+    discovery: [],
+    processes: [],
+    opportunities: [],
+    blueprints: [],
+    scope: null,
+    artifacts: { teardown: null, proposal: null, sow: null, projectPlan: null, handoverDocs: null, caseStudy: null },
+    project: null,
+    tags: [],
+    notes: [],
+    nextAction: null,
+  }
+}
+
+// An engagement with every section populated, so nested validation is exercised end to end.
+export function engagement(): Engagement {
+  return {
+    id: 'eng-1',
+    createdAt: '2026-09-01T08:00:00.000Z',
+    updatedAt: '2026-09-13T11:00:00.000Z',
+    company: company(),
+    contacts: [contact()],
+    stage: 'IMPLEMENTATION',
+    source: 'teardown',
+    stageHistory: [
+      { stage: 'LEAD', at: '2026-09-01T08:00:00.000Z' },
+      { stage: 'WON', at: '2026-09-12T16:00:00.000Z', note: 'Signed the SOW' },
+      { stage: 'IMPLEMENTATION', at: '2026-09-13T09:00:00.000Z' },
+    ],
+    discovery: [discoverySession()],
+    processes: [businessProcess()],
+    opportunities: [{ ...opportunity(), scoring: scoringResult() }],
+    blueprints: [blueprint()],
+    scope: projectScope(),
+    artifacts: artifactSet(),
+    project: project(),
+    tags: ['logistics'],
+    notes: [timestampedNote()],
+    nextAction: { text: 'Send week 1 update', due: '2026-09-18' },
+  }
+}
+
+export function pattern(): Pattern {
+  const { id: _id, opportunityId: _opportunityId, ...skeleton } = blueprint()
+  return {
+    id: 'pat-email-triage',
+    name: 'Email triage',
+    category: 'email',
+    problem: 'Inbound requests are read and retyped by hand.',
+    solution: 'Incoming email is classified and routed automatically.',
+    architecture: 'Mailbox webhook, classifier, CRM write with retry.',
+    requiredIntegrations: ['Gmail', 'HubSpot'],
+    complexity: 'medium',
+    baseHours: 12,
+    risks: ['Ambiguous emails need a human fallback'],
+    clientExplanation: 'Every request lands in the right place without anyone copying it.',
+    blueprintSkeleton: skeleton,
+    codeNotes: 'Keep the classifier prompt versioned.',
+    usedInEngagements: ['eng-1'],
+  }
+}
+
+export function calibrationRecord(): CalibrationRecord {
+  return {
+    patternId: 'pat-email-triage',
+    samples: [
+      { engagementId: 'eng-0', estimatedHours: 20, actualHours: 26, completedAt: '2026-08-30T17:00:00.000Z' },
+    ],
+    multiplier: 1,
+    sampleCount: 1,
+    trustworthy: false,
+  }
+}
+
+export function documentTemplate(): DocumentTemplate {
+  return {
+    id: 'tpl-proposal',
+    kind: 'proposal',
+    name: 'Standard proposal',
+    sections: [
+      { id: 'executive-summary', heading: 'Executive summary', body: '{{company.name}} spends too long retyping quotes.' },
+      {
+        id: 'deliverables',
+        heading: 'Deliverables',
+        body: '{{name}}',
+        showIf: 'scope.deliverables',
+        repeatOver: 'scope.deliverables',
+      },
+    ],
+  }
+}
+
+export function library(): Library {
+  return {
+    patterns: [pattern()],
+    questionSets: [questionSet()],
+    templates: [documentTemplate()],
+    calibration: [calibrationRecord()],
+  }
+}
+
+export function meta(): Meta {
+  return {
+    schemaVersion: 1,
+    createdAt: '2026-09-01T08:00:00.000Z',
+    lastMigratedAt: null,
+    appVersion: '0.0.0',
+  }
+}
+
+export function wholeStore(): WholeStore {
+  return {
+    meta: meta(),
+    config: defaultConfig(),
+    library: library(),
+    engagements: [engagement(), newEngagement()],
   }
 }
 
