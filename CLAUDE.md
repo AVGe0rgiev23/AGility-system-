@@ -98,8 +98,10 @@ install size, and what it replaces.
 - No secrets in the bundle. If an AI provider key is ever added, it lives in
   IndexedDB only and is never logged, never included in exports by default, and
   never sent anywhere except the provider endpoint.
-- Every write goes through `src/storage/repository.ts`. No other module imports
-  Dexie. Enforced by an eslint `no-restricted-imports` rule.
+- Every write goes through `src/storage/repository.ts`. `src/storage/db.ts`
+  declares the Dexie instance and `repository.ts` is its only consumer; no other
+  module imports Dexie or `db.ts`. Enforced by an eslint `no-restricted-imports`
+  rule.
 
 ## Design system
 

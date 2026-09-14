@@ -33,10 +33,14 @@ plain files on disk.
   Dexie / IndexedDB / File System Access API
 ```
 
-Hard rules, enforced by lint:
+Hard rules, enforced by lint, and for engines by lint plus a test:
 
-- `engines/` may import only from `schema/`. Never from `storage/`, `ui/`,
-  `hooks/`, or any browser API.
+- `engines/` may import only from `schema/` and other files in `engines/`. Never
+  from `storage/`, `ui/`, `hooks/`, or any browser API. Lint is a denylist: it
+  bans the other layers, React, Dexie, a list of browser globals, and the clock
+  and random calls. `src/engines/import-allowlist.test.ts` is the allowlist: it
+  fails on any import that resolves outside `engines/` and `schema/`. A browser
+  global missing from lint's list is not caught automatically.
 - Only `storage/repository.ts` imports `storage/db.ts`.
 - `ui/` never imports `storage/db.ts` or Dexie.
 - Nothing imports from `ui/` except `ui/` and `app.tsx`.
@@ -47,7 +51,7 @@ Hard rules, enforced by lint:
 src/
   schema/       Zod schemas, inferred types, migrations, fixtures
   storage/      db.ts, repository.ts, sync.ts, transfer.ts
-  engines/      scoring, roi, estimate, runCost, calibration, signals
+  engines/      scoring, roi, estimate, run-cost, calibration, signals
   render/       template engine, view-model flattening, print layout (Stage 3)
   hooks/        useEngagement, useLibrary, useConfig, useDerived
   ui/           shell/, primitives/, views/

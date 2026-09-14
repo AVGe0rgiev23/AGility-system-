@@ -21,7 +21,7 @@ Never hand-write a type that Zod can infer.
 
 ```ts
 interface Meta {
-  schemaVersion: number      // the only version in the system
+  schemaVersion: number      // the only version in the system; a whole number, 1 or more
   createdAt: string
   lastMigratedAt: string | null
   appVersion: string
@@ -36,13 +36,20 @@ type Source = 'client-stated' | 'measured' | 'estimated' | 'default'
 interface TracedValue {
   value: number
   unit: string            // 'hours/week' | 'EUR' | 'percent' | 'count' | ...
-  currency?: Currency     // required when unit is a money unit
+  currency?: Currency     // required for a money unit, and must match it
   source: Source
   note?: string           // "Marta said 'about 4 hours, most weeks'"
   capturedAt?: string     // ISO, when the client said it
   answerId?: string       // links back to the discovery answer
 }
 ```
+
+A unit is a money unit when its leading segment, before any `/`, is a `Currency`
+code: `EUR`, `GBP/hour` and `USD/error` are money units; `hours/week` and
+`percent` are not. A money unit requires `currency`, and `currency` must equal
+the code the unit implies, so `{ unit: 'GBP/hour', currency: 'EUR' }` is
+rejected. Engines convert using `currency`, so a value whose unit and currency
+disagree could never be converted correctly.
 
 Confidence scoring reads `source` across all inputs. Proposals render an
 assumptions table from every TracedValue used. Every figure Alex presents traces
@@ -53,7 +60,7 @@ to something the client actually said.
 The agency currency is EUR. Company currency may differ.
 
 ```ts
-type Currency = 'EUR' | 'BGN' | 'GBP' | 'USD'
+type Currency = 'EUR' | 'GBP' | 'USD'
 ```
 
 - Every money `TracedValue` carries its `currency`.
@@ -61,9 +68,12 @@ type Currency = 'EUR' | 'BGN' | 'GBP' | 'USD'
   converted on the way in using `Config.fxRates`.
 - Display converts back to the company currency where it helps the client.
 - `Config.fxRates` is a hand-maintained table of units per 1 EUR, with a
-  `lastUpdated` date. BGN is pegged at 1.95583 and never changes. GBP and USD
-  are approximations; the UI shows the `lastUpdated` date next to any converted
-  figure so a stale rate is visible rather than silent.
+  `lastUpdated` date. GBP and USD are approximations; the UI shows the
+  `lastUpdated` date next to any converted figure so a stale rate is visible
+  rather than silent.
+- BGN is deliberately absent. Bulgaria adopted the euro on 1 January 2026 at
+  1.95583 BGN per EUR, and the euro has been its sole currency since
+  1 February 2026, so Bulgarian companies are EUR companies.
 
 ## Engagement
 
@@ -471,6 +481,7 @@ interface Pattern {
   requiredIntegrations: string[]
   complexity: 'low' | 'medium' | 'high'
   baseHours: number             // UNCALIBRATED. Calibration applies in estimation only.
+                                // Greater than 0: a zero-hour pattern would make its build free.
   risks: string[]
   clientExplanation: string     // drops straight into proposals
   blueprintSkeleton: Omit<Blueprint, 'id' | 'opportunityId'> | null
@@ -509,7 +520,10 @@ interface TemplateSection {
 
 ## Config (single record)
 
-Everything tunable lives here. No magic numbers in code.
+Everything the operator may tune lives here. Constants that encode the scoring
+model itself, such as the effort-points table (ENGINES §1.2), live in code as
+named, exported, unit-tested constants in their engine module. See ENGINES,
+Where constants live.
 
 ```ts
 interface Config {
@@ -526,9 +540,9 @@ interface Config {
     bands: {
       id: string
       name: string
-      maxHours: number
-      floor: number
-      ceiling: number
+      maxHours: number | null         // null = unbounded; exactly one band, last, id 'custom', unpriced
+      floor: number | null            // null only on the custom band = no published price
+      ceiling: number | null
     }[]
     supportMonthly: { floor: number; ceiling: number }
   }
@@ -582,17 +596,75 @@ interface Config {
 
 Pricing bands, from the published AGility site:
 
-| Band | Max hours | Floor | Ceiling |
-|---|---|---|---|
-| Pilot | 15 | €600 | €900 |
-| Full workflow | 60 | €1,800 | €4,500 |
-| Custom | Infinity | null | null (flag for manual quote) |
+| Band | `id` | Max hours | Floor | Ceiling |
+|---|---|---|---|---|
+| Pilot | `pilot` | 15 | €600 | €900 |
+| Full workflow | `full-workflow` | 60 | €1,800 | €4,500 |
+| Custom | `custom` | `null` (unbounded) | `null` | `null` (flag for manual quote) |
+
+The custom band stores `maxHours: null`, not `Infinity`. `JSON.stringify` turns
+`Infinity` into `null`, so an `Infinity` would not survive the disk mirror or an
+export and import round trip. `null` is the stored meaning of unbounded.
 
 Support retainer: €350–800/month. Target hourly rate: €65, derived from the full
 workflow band at 30–60 hours.
 
-FX rates: `{ EUR: 1, BGN: 1.95583, GBP: 0.85, USD: 1.08 }`. BGN is a hard peg.
-The other two are approximations Alex updates by hand when they matter.
+FX rates: `{ EUR: 1, GBP: 0.85, USD: 1.08 }`, `lastUpdated: '2026-09-14'`. GBP
+and USD are approximations Alex updates by hand when they matter.
+
+Agency: name `AGility`; `email` and `website` seeded empty, to be filled in
+Settings. Industries: `Professional Services`, `Software / Tech`, `E-commerce`,
+`Operations / Logistics`. `runCostDefaults` seeds empty. Storage seeds
+`autoSyncOnWrite: true` with no folder connected. AI seeds `provider: 'none'`,
+`enabled: false`.
+
+### Validation
+
+`ConfigSchema` enforces these rules on top of the types above. They live in the
+schema, not the Settings screen, because import, folder restore and migration
+never pass through the UI; Settings only renders the messages. The rules run once
+every field has a valid type, and each issue names the field path shown.
+
+| Rule | Issue path |
+|---|---|
+| `agency.email` is empty or a valid email address | `agency.email` |
+| `agency.website` is empty or a valid `https://` URL with a domain host and no leading or trailing whitespace | `agency.website` |
+| The agency currency's rate is exactly 1 | `fxRates.rates.EUR` |
+| Every other FX rate is greater than 0 | `fxRates.rates.<currency>` |
+| `pricing.targetHourlyRate` is greater than 0 | `pricing.targetHourlyRate` |
+| Every bounded band (`maxHours` set) has a `floor` and a `ceiling` | `pricing.bands.<i>.floor`, `pricing.bands.<i>.ceiling`, on whichever is `null` |
+| A band's `floor` is not above its `ceiling` | `pricing.bands.<i>.floor` |
+| Exactly one band has `maxHours: null` | `pricing.bands` |
+| When exactly one exists, that unbounded band is the last band | `pricing.bands.<i>.maxHours` |
+| When exactly one exists, that unbounded band has `id: 'custom'` | `pricing.bands.<i>.id` |
+| When exactly one exists, that unbounded band has `floor: null` and `ceiling: null` | `pricing.bands.<i>.floor`, `pricing.bands.<i>.ceiling` |
+| Bounded `maxHours` values strictly ascend: no repeats, no decreases | `pricing.bands.<i>.maxHours`, on the later band |
+| `pricing.supportMonthly.floor` is not above its `ceiling` | `pricing.supportMonthly.floor` |
+| Each `estimation.overheads` value is in [0, 1) | `estimation.overheads.<key>` |
+| `estimation.contingency` is in [0, 1) | `estimation.contingency` |
+| `estimation.fallbackPatternHours` is greater than 0 | `estimation.fallbackPatternHours` |
+| `scoring.valueCeiling`, `effortCeiling` and `hoursPerEffortPoint` are greater than 0 | `scoring.<key>` |
+| `roi.conservativeFactor` is at most 1 | `roi.conservativeFactor` |
+| `roi.optimisticFactor` is at least 1 | `roi.optimisticFactor` |
+| `roi.discountRate` is in [0, 1) | `roi.discountRate` |
+| `roi.horizonYears` is a whole number, at least 1 | `roi.horizonYears` |
+
+Why the less obvious rules exist:
+
+- **Unbounded band last, with id `custom` and no price.** Estimation takes the
+  first band that fits and falls through to the unbounded band, and it flags
+  `CUSTOM_QUOTE` by that band's id (ENGINES §2). A renamed or misplaced catch-all
+  band would silently publish a price where there should be none, and a floor or
+  ceiling on it would clamp a price the estimate still calls a custom quote.
+- **Only the custom band goes unpriced.** The estimate clamps a bounded band's
+  price between its floor and ceiling. A bounded band without them would price
+  unclamped and raise no flag, publishing a figure nobody set.
+- **`fallbackPatternHours` above 0.** It is used when no pattern is linked; zero
+  would quote that opportunity as free.
+- **Whole-number horizon.** NPV sums over discrete years, so a fractional horizon
+  has no meaning.
+- **Positive scoring ceilings.** Both ceilings divide the scores, and zero hours
+  per effort point would make every effort factor free.
 
 ## Storage layout
 
@@ -621,9 +693,39 @@ Keep that folder as a private git repo.
 
 ## Migration rule
 
-`src/schema/migrations/` holds one file per version bump, each exporting
-`migrate(store: unknown): NextStore` operating on the **whole store**, not a
-single record. On load, read `Meta.schemaVersion`, run every migration up to
-current, validate the result, write back, update `Meta`. A fixture of the full
-store at every historical version lives in `src/schema/__fixtures__/` and is
-migrated in tests.
+Migrations operate on the **whole store**, never a single record. The current
+version is `CURRENT_SCHEMA_VERSION` in `src/schema/version.ts`.
+
+`src/schema/migrations/` holds one file per version bump. Each exports a
+migration `(store: unknown) => unknown` that takes the whole store at version N
+and returns it at N + 1, including setting `meta.schemaVersion` to N + 1. Each is
+registered in `MIGRATIONS` in `run-migrations.ts`, keyed by the version it
+upgrades from.
+
+`runMigrations(store, from)` applies every registered step from `from` up to
+the current version and validates the result against the whole-store schema.
+It refuses, with a `MigrationError` and a plain message:
+
+- **Data newer than the app.** When `from` is above the current version, the
+  message names both versions and says the app is older than the data. Parsing
+  it anyway would let Zod strip every field this app does not know, and the
+  downgrade would look like success.
+- **Mismatched versions.** A `meta.schemaVersion` that disagrees with `from`, for
+  example `.schema-version` on disk disagreeing with the data.
+- **An invalid starting version.** Anything but a whole number of 1 or more.
+- **A broken chain.** A missing step or a step that throws, named by its
+  versions, with the original error as the cause.
+- **A bad result.** A result that fails validation, with the Zod issues attached,
+  or whose `meta.schemaVersion` was not advanced to the current version.
+
+Steps run on a copy, so a failure leaves the caller's data untouched.
+`runMigrations` never writes. Storage writes the result back atomically and
+stamps `Meta.lastMigratedAt` only once it returns. An optional third argument,
+`{ migrations, current }`, exists so tests can exercise the step loop with a
+fake chain.
+
+A frozen fixture of the full store at every version lives in
+`src/schema/__fixtures__/store-vN.json` and is migrated in tests. A fixture is
+never edited after its version ships. The tests require a fixture for every
+version up to current and a migration for every version below it, so a schema
+bump cannot land without both.
