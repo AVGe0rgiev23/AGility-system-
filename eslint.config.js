@@ -109,6 +109,11 @@ export default defineConfig(
           'fetch',
           'XMLHttpRequest',
           'performance',
+          'location',
+          'setTimeout',
+          'setInterval',
+          // Reaches every other global, including Date.now, past the bans above.
+          'globalThis',
         ].map((name) => ({ name, message: enginePurity })),
       ],
       'no-restricted-properties': [
