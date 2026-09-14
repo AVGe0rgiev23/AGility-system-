@@ -1,12 +1,38 @@
-import { businessProcess, company, opportunity } from '../../schema/__fixtures__/records'
+import {
+  businessProcess,
+  company,
+  estimateResult,
+  opportunity,
+  runCostResult,
+  scoringResult,
+} from '../../schema/__fixtures__/records'
 import { defaultConfig, type Config } from '../../schema/config'
 import type { Pattern } from '../../schema/library'
 import type { EffortInputs, Opportunity } from '../../schema/opportunity'
 import type { Process } from '../../schema/process'
+import type { EstimateResult, RunCostResult, ScoringResult } from '../../schema/results'
+import type { RunCostLineItem } from '../../schema/run-cost'
 import type { Currency, Source, TracedValue } from '../../schema/traced'
 import type { ScoringInput } from '../scoring'
 
 // Test-only helpers for the engine suites. No vitest import: the import allowlist scans this file.
+
+// Shaped like the engines' own input types, spelled with schema types so this file does not
+// depend on an engine module before it exists.
+export interface ScoredOpportunity {
+  opportunity: Opportunity
+  scoring: ScoringResult
+}
+
+export type CalibrationLookup = Record<string, { multiplier: number; sampleCount: number; trustworthy: boolean }>
+
+export interface ROIInput {
+  scored: ScoredOpportunity[]
+  estimate: EstimateResult
+  runCost: RunCostResult
+  config: Config
+  now: string
+}
 
 // mulberry32: a tiny seeded generator, so a property test that fails does so on every run
 // with the same case index, and Math.random stays out of the engines folder entirely.
@@ -146,6 +172,92 @@ export function randomScoringInput(random: Random): ScoringInput {
     processes,
     patterns,
     company: { ...company(), blendedHourlyCost },
+    config,
+    now: '2026-09-15T00:00:00.000Z',
+  }
+}
+
+// ---- Scope inputs (estimate, run cost, ROI) --------------------------------------------
+
+export const PATTERN_IDS = ['pat-a', 'pat-b', 'pat-c'] as const
+
+// A scored opportunity as the estimate and ROI engines receive it. Raw hours are 0 one time
+// in ten so the empty-scope path is exercised.
+export function randomScored(random: Random, index: number): ScoredOpportunity {
+  return {
+    opportunity: {
+      ...opportunity(),
+      id: `opp-${index}`,
+      primaryPatternId: random() < 0.2 ? null : pick(random, PATTERN_IDS),
+    },
+    scoring: {
+      ...scoringResult(),
+      annualValue: randomNumber(random, 0, 60000),
+      hoursSavedPerMonth: randomNumber(random, 0, 200),
+      rawBuildHours: random() < 0.1 ? 0 : randomNumber(random, 0.5, 150),
+      confidence: randomInt(random, 15, 100),
+      assumptions: [randomTraced(random, randomNumber(random, 0, 100), 'percent'), randomMoney(random, randomNumber(random, 5, 120), 'hour')],
+      computedAt: `2026-0${randomInt(random, 1, 9)}-01T00:00:00.000Z`,
+    },
+  }
+}
+
+export function randomScoredSet(random: Random): ScoredOpportunity[] {
+  return Array.from({ length: randomInt(random, 0, 4) }, (_, index) => randomScored(random, index))
+}
+
+export function randomCalibration(random: Random): CalibrationLookup {
+  const lookup: CalibrationLookup = {}
+  for (const patternId of PATTERN_IDS) {
+    if (random() < 0.3) continue
+    const sampleCount = randomInt(random, 0, 12)
+    lookup[patternId] = {
+      multiplier: sampleCount < 3 ? 1 : randomNumber(random, 0.5, 3),
+      sampleCount,
+      trustworthy: sampleCount >= 3,
+    }
+  }
+  return lookup
+}
+
+export function randomRunCostItem(random: Random, index: number): RunCostLineItem {
+  const payer = (): 'client' | 'agency' | 'not-applicable' => pick(random, ['client', 'agency', 'not-applicable'] as const)
+  const usageBased = random() < 0.3
+  return {
+    id: `rc-${index}`,
+    label: `Item ${index}`,
+    category: pick(random, ['hosting', 'database', 'scheduler', 'ai', 'monitoring', 'domain', 'third-party', 'other'] as const),
+    monthlyCost: randomNumber(random, 0, 200),
+    paidBy: { 'fully-managed': payer(), 'client-owned': payer(), hybrid: payer() },
+    usageBased,
+    ...(usageBased
+      ? {
+          usageFormula: {
+            callsPerMonth: randomInt(random, 0, 50000),
+            avgInputTokens: randomInt(random, 0, 4000),
+            avgOutputTokens: randomInt(random, 0, 1000),
+            inputPricePerMTok: randomNumber(random, 0, 5),
+            outputPricePerMTok: randomNumber(random, 0, 20),
+          },
+        }
+      : {}),
+  }
+}
+
+export function randomROIInput(random: Random): ROIInput {
+  const agencyMonthly = randomNumber(random, 0, 800)
+  const config = defaultConfig()
+  config.roi.discountRate = pick(random, [0, 0.08, 0.2])
+  config.roi.horizonYears = randomInt(random, 1, 5)
+  return {
+    scored: randomScoredSet(random),
+    estimate: { ...estimateResult(), price: random() < 0.1 ? 0 : randomNumber(random, 0, 20000) },
+    runCost: {
+      ...runCostResult(),
+      clientMonthly: randomNumber(random, 0, 800),
+      agencyMonthly,
+      agencyAnnual: agencyMonthly * 12,
+    },
     config,
     now: '2026-09-15T00:00:00.000Z',
   }
