@@ -51,6 +51,12 @@ describe('PatternSchema', () => {
     expect(issuePaths(PatternSchema, { ...pattern(), baseHours: '12' })).toEqual(['baseHours'])
   })
 
+  it('requires baseHours above 0, since a zero-hour pattern would make its build free', () => {
+    expect(issuePaths(PatternSchema, { ...pattern(), baseHours: 0 })).toEqual(['baseHours'])
+    expect(issuePaths(PatternSchema, { ...pattern(), baseHours: -4 })).toEqual(['baseHours'])
+    expect(issuePaths(PatternSchema, { ...pattern(), baseHours: 0.5 })).toEqual([])
+  })
+
   it('survives a JSON round trip unchanged', () => {
     expect(PatternSchema.parse(roundTrip(pattern()))).toEqual(pattern())
   })

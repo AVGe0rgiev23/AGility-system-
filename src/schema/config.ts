@@ -143,8 +143,17 @@ export const ConfigSchema = z.object({
     if (unboundedIndex !== pricing.bands.length - 1) {
       issue(['pricing', 'bands', unboundedIndex, 'maxHours'], 'The band with no max hours must be the last band')
     }
-    if (pricing.bands[unboundedIndex]?.id !== 'custom') {
+    const unbounded = pricing.bands[unboundedIndex]
+    if (unbounded?.id !== 'custom') {
       issue(['pricing', 'bands', unboundedIndex, 'id'], "The band with no max hours must have id 'custom'")
+    }
+    // A custom quote has no published price; a floor or ceiling here would clamp a price
+    // that the estimate still flags as CUSTOM_QUOTE.
+    if (unbounded?.floor !== null) {
+      issue(['pricing', 'bands', unboundedIndex, 'floor'], 'The band with no max hours must have no floor')
+    }
+    if (unbounded?.ceiling !== null) {
+      issue(['pricing', 'bands', unboundedIndex, 'ceiling'], 'The band with no max hours must have no ceiling')
     }
   }
 

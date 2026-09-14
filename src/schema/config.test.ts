@@ -211,6 +211,19 @@ describe('ConfigSchema consistency rules', () => {
     expect(pathsAfter((c) => (band(c, 'custom').id = 'bespoke'))).toEqual(['pricing.bands.2.id'])
   })
 
+  it('the band with no max hours must have no floor and no ceiling', () => {
+    const priced = (c: Config) => {
+      const custom = band(c, 'custom')
+      custom.floor = 5000
+      custom.ceiling = 9000
+    }
+    expect(pathsAfter(priced)).toEqual(['pricing.bands.2.floor', 'pricing.bands.2.ceiling'])
+    expect(messagesAfter(priced)).toEqual([
+      'The band with no max hours must have no floor',
+      'The band with no max hours must have no ceiling',
+    ])
+  })
+
   it('band max hours must not repeat', () => {
     expect(pathsAfter((c) => (band(c, 'full-workflow').maxHours = 15))).toEqual(['pricing.bands.1.maxHours'])
     expect(messagesAfter((c) => (band(c, 'full-workflow').maxHours = 15))).toEqual([

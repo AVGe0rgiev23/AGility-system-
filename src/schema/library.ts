@@ -15,8 +15,9 @@ export const PatternSchema = z.object({
   requiredIntegrations: z.array(z.string()),
   complexity: z.enum(['low', 'medium', 'high']),
   // Uncalibrated. Calibration is applied in estimation only; applying it here as
-  // well would compound the multiplier and inflate every quote.
-  baseHours: z.number(),
+  // well would compound the multiplier and inflate every quote. Positive, because
+  // a linked pattern at zero hours would make its build free in every estimate.
+  baseHours: z.number().positive(),
   risks: z.array(z.string()),
   // Drops straight into proposals.
   clientExplanation: z.string(),
