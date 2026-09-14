@@ -5,6 +5,7 @@ import type { Opportunity } from '../schema/opportunity'
 import type { Process } from '../schema/process'
 import type { ScoringResult } from '../schema/results'
 import { moneyUnitCurrency, type Source, type TracedValue } from '../schema/traced'
+import { fmt } from './format'
 import { hashInputs } from './inputs-hash'
 
 // ENGINES §1.2. The table is the scoring model itself, so it is code rather than Config:
@@ -87,11 +88,6 @@ function resolveLinked<T extends { id: string }>(ids: readonly string[], items: 
     else found.push(item)
   }
   return found
-}
-
-// Formula strings are for reading, not for arithmetic.
-function fmt(value: number): string {
-  return String(Number(value.toFixed(2)))
 }
 
 function clampScore(score: number): number {
