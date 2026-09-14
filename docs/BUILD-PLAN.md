@@ -36,7 +36,8 @@ Nothing works without this and retrofitting it is painful.
    `build`, `typecheck`, `test`, `lint`.
 2. Add the eslint `no-restricted-imports` rules from `docs/ARCHITECTURE.md`
    (nothing outside `storage/repository.ts` imports `storage/db.ts`; `engines/`
-   imports only `schema/`).
+   imports only `schema/` and other engine files, enforced by lint plus
+   `src/engines/import-allowlist.test.ts`).
 3. Implement every schema in `docs/DATA-MODEL.md` as Zod schemas in
    `src/schema/`. Infer types; never hand-write them. Build order:
    `traced` → `process` → `opportunity` → `blueprint` → `discovery` →
@@ -47,9 +48,10 @@ Nothing works without this and retrofitting it is painful.
    operating on the whole store, a single global version in `Meta`, a v1 whole-
    store fixture, and a passing migration test. Build this before any real data
    exists.
-6. `src/storage/repository.ts` over Dexie. Tables `engagements`, `library`,
-   `config`, `meta`. Zod-validate on every read. Bump `updatedAt` on every write.
-   Nothing else in the codebase imports Dexie.
+6. `src/storage/db.ts` declares the Dexie instance, with tables `engagements`,
+   `library`, `config`, `meta`. `src/storage/repository.ts` is its only consumer.
+   Zod-validate on every read. Bump `updatedAt` on every write. Nothing else in
+   the codebase imports Dexie or `db.ts`.
 7. `src/storage/sync.ts`. Persist the directory handle. Mirror writes to the
    layout in DATA-MODEL.md, including `.schema-version`. Feature-detect and fall
    back to manual export/import with a persistent warning banner.

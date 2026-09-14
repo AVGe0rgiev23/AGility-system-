@@ -1,9 +1,18 @@
 # Engine Specifications
 
 Version 2. Pure functions in `src/engines/`. No storage access, no React, no
-side effects, no clock except an injected one. Every constant comes from
-`Config`. Every function returns its inputs alongside its outputs so the UI and
-documents can show the working.
+side effects, no clock except an injected one. Every function returns its inputs
+alongside its outputs so the UI and documents can show the working.
+
+## Where constants live
+
+Constants that encode the scoring model itself live in code, as named, exported,
+unit-tested constants in their engine module. Examples: the effort-points table
+(§1.2), the confidence penalties and clamp (§1.3), the retainer margin threshold
+(§3), the run-cost share warning threshold (§4), and the calibration sample
+threshold, window and clamp (§5). Constants the operator may tune live in
+`Config`: the hourly rate, pricing bands, overheads, contingency, scoring
+ceilings, strategic multipliers and ROI factors.
 
 ## Currency rule
 
@@ -30,14 +39,18 @@ type CalibrationLookup = Record<string, {
 scoreOpportunity(input: {
   opportunity: Opportunity
   processes: Process[]        // only those referenced by the opportunity
+  patterns: Pick<Pattern, 'id' | 'baseHours'>[]   // only those in opportunity.patternIds
   company: Company
   config: Config
+  now: string                 // ISO timestamp, see below
 }): ScoringResult
 
 estimateScope(input: {
   scored: { opportunity: Opportunity; scoring: ScoringResult }[]
   config: Config
   calibration: CalibrationLookup
+  advisoryBlueprintHours: number | null   // pre-summed by the caller, see §2
+  now: string
 }): EstimateResult
 
 computeRunCost(input: {
@@ -45,6 +58,7 @@ computeRunCost(input: {
   deliveryModel: DeliveryModel
   supportRetainerMonthly: number | null
   config: Config
+  now: string
 }): RunCostResult
 
 computeROI(input: {
@@ -52,12 +66,21 @@ computeROI(input: {
   estimate: EstimateResult
   runCost: RunCostResult
   config: Config
+  now: string
 }): ROIResult
 
 buildCalibrationLookup(records: CalibrationRecord[], config: Config): CalibrationLookup
 ```
 
-No engine reads the Library. Calibration is passed in.
+No engine reads the Library. Calibration and the pattern hours that scoring
+needs are passed in, and the caller pre-sums `advisoryBlueprintHours` from the
+selected opportunities' blueprints.
+
+`now` exists because engines may not call `Date.now()`, which lint bans: an
+engine that read the clock would give different output for the same input
+depending on when it ran. The caller passes the current time as an ISO string,
+and the engine copies it into `computedAt`. `now` is never part of `inputsHash`,
+so identical inputs always hash identically, whenever they are computed.
 
 ---
 
@@ -234,10 +257,17 @@ totalHours     = subtotalHours × (1 + contingency)          // × 1.15
 // combined: totalHours = calibratedHours × 1.702
 ```
 
+Empty scope. When `totalHours === 0`, for example when no opportunity is
+selected, no band is placed. Return `price: 0`, `indicativePrice: 0`,
+`bandId: null`, `effectiveHourlyRate: null` and the flag `EMPTY_SCOPE`, and skip
+band placement and the band flags below. Placing an empty scope would clamp it
+up to the pilot floor, and `price / totalHours` has no answer.
+
 Band placement. `band.maxHours === null` means the band is unbounded. Config
 validation (DATA-MODEL, Config, Validation) guarantees bounded bands in strictly
 ascending `maxHours` order, then exactly one unbounded band, last, identified by
-`id === 'custom'`. Bands are compared in stored order:
+`id === 'custom'`, whose `floor` and `ceiling` are both `null`. Bands are
+compared in stored order:
 
 ```
 band = first band where band.maxHours !== null && totalHours <= band.maxHours,
@@ -245,19 +275,26 @@ band = first band where band.maxHours !== null && totalHours <= band.maxHours,
 
 indicativePrice = totalHours × config.pricing.targetHourlyRate
 
+// Config validation guarantees floor and ceiling are both null or both set.
 price = band.floor === null
-          ? indicativePrice                      // custom band, no clamp
+          ? indicativePrice                      // no published price: no clamp
           : clamp(indicativePrice, band.floor, band.ceiling)
 ```
 
 Flags:
 
-- `indicativePrice > band.ceiling` → **`UNDERPRICED`**. The work exceeds what the
-  published band allows. Cut scope or quote custom. Do not silently clamp and eat
-  the difference. Surface loudly in the UI and block proposal render until
-  acknowledged.
-- `indicativePrice < band.floor` → `BELOW_FLOOR`, the floor applies.
-- `band.id === 'custom'` → `CUSTOM_QUOTE`, no published price.
+- `UNDERPRICED` and `BELOW_FLOOR` are evaluated **only when the band's `floor`
+  and `ceiling` are both non-null**. An unguarded comparison against `null`
+  coerces it to 0, so every custom quote would read as underpriced.
+  - `indicativePrice > band.ceiling` → **`UNDERPRICED`**. The work exceeds what
+    the published band allows. Cut scope or quote custom. Do not silently clamp
+    and eat the difference. Surface loudly in the UI and block proposal render
+    until acknowledged.
+  - `indicativePrice < band.floor` → `BELOW_FLOOR`, the floor applies.
+- `band.id === 'custom'` → `CUSTOM_QUOTE`, no published price. This is the only
+  band flag the custom band can raise, and its `price` is `indicativePrice`,
+  unclamped.
+- `totalHours === 0` → `EMPTY_SCOPE`. See Empty scope above; no band flag applies.
 - any selected opportunity confidence < 50 → `LOW_CONFIDENCE`.
 - any used pattern with `trustworthy === false` → `UNCALIBRATED_PATTERN`.
 
@@ -269,10 +306,10 @@ interface EstimateResult {
   overheadBreakdown: { label: string; hours: number }[]
   contingencyHours: number
   totalHours: number
-  bandId: string
+  bandId: string | null             // null when totalHours === 0 (EMPTY_SCOPE)
   indicativePrice: number
   price: number
-  effectiveHourlyRate: number       // price / totalHours
+  effectiveHourlyRate: number | null   // price / totalHours; null when totalHours === 0
   flags: EstimateFlag[]
   perOpportunity: {
     opportunityId: string
@@ -291,8 +328,9 @@ interface EstimateResult {
 health of the business. Display it prominently and track it over time.
 
 `advisoryBlueprintHours` is the sum of `BlueprintNode.advisoryHours` for the
-selected opportunities, shown beside `totalHours` as a sanity check. **It never
-feeds the price.**
+selected opportunities. The caller computes it and passes it in, and the engine
+copies it into the result to show beside `totalHours` as a sanity check. **It
+never feeds the price.**
 
 ### Invariants
 
@@ -300,6 +338,8 @@ feeds the price.**
 - A multiplier of 1.0 for every pattern gives `totalHours = rawHours × 1.702`.
 - Doubling every `rawBuildHours` doubles `totalHours`.
 - `price` is always within the band's floor and ceiling when both are non-null.
+- `totalHours === 0` always gives `price: 0`, `bandId: null`,
+  `effectiveHourlyRate: null` and the `EMPTY_SCOPE` flag.
 
 ---
 
@@ -318,7 +358,7 @@ interface RunCostLineItem {
   paidBy: Record<DeliveryModel, 'client' | 'agency' | 'not-applicable'>
   notes?: string
   usageBased: boolean
-  usageFormula?: {
+  usageFormula?: {                  // required when usageBased is true
     callsPerMonth: number
     avgInputTokens: number
     avgOutputTokens: number
@@ -327,6 +367,10 @@ interface RunCostLineItem {
   }
 }
 ```
+
+`usageFormula` is required when `usageBased` is true, because a usage-based item
+is priced from the formula alone. The schema rejects a usage-based item without
+one.
 
 ```
 itemMonthly = usageBased
