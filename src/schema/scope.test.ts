@@ -117,6 +117,34 @@ describe('ArtifactRefSchema and ArtifactSetSchema', () => {
     ])
   })
 
+  it('require baseInputs and rebasedFrom, nullable, so a pre-v3 override is only ever migrated in', () => {
+    const ref = artifactRef()
+    const [override] = ref.overrides
+    if (override === undefined) throw new Error('fixture has an override')
+    const { baseInputs: _inputs, rebasedFrom: _from, ...bare } = override
+    expect(issuePaths(ArtifactRefSchema, { ...ref, overrides: [bare] })).toEqual([
+      'overrides.0.baseInputs',
+      'overrides.0.rebasedFrom',
+    ])
+    const migrated = { ...override, baseInputs: null, rebasedFrom: null }
+    expect(issuePaths(ArtifactRefSchema, { ...ref, overrides: [migrated] })).toEqual([])
+    expect(issuePaths(ArtifactRefSchema, { ...ref, overrides: [{ ...override, rebasedFrom: 'h-old' }] })).toEqual([])
+  })
+
+  it('snapshot leaf values only: an object or array under a path is refused', () => {
+    const ref = artifactRef()
+    const [override] = ref.overrides
+    if (override === undefined) throw new Error('fixture has an override')
+    const leaves = { 'company.name': 'Rila', 'scope.deliverables': 2, 'scope.estimate': false, 'company.website': null }
+    expect(issuePaths(ArtifactRefSchema, { ...ref, overrides: [{ ...override, baseInputs: leaves }] })).toEqual([])
+    for (const value of [{ value: 1 }, ['a'], undefined]) {
+      const baseInputs = { 'company.blendedHourlyCost': value }
+      expect(issuePaths(ArtifactRefSchema, { ...ref, overrides: [{ ...override, baseInputs }] })).toEqual([
+        'overrides.0.baseInputs.company.blendedHourlyCost',
+      ])
+    }
+  })
+
   it('require a slot for every artifact kind, even when empty', () => {
     const { caseStudy: _omitted, ...fiveSlots } = artifactSet()
     expect(issuePaths(ArtifactSetSchema, fiveSlots)).toEqual(['caseStudy'])

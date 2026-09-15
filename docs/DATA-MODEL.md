@@ -429,15 +429,30 @@ interface ArtifactSet {
 
 interface ArtifactRef {
   templateId: string
-  overrides: {
-    sectionId: string
-    content: string
-    editedAt: string
-    baseInputsHash: string      // detects upstream drift, triggers conflict UI
-  }[]
+  overrides: SectionOverride[]
   lastRenderedAt: string | null
   sentAt: string | null
   version: number
+}
+
+type RenderScalar = string | number | boolean | null
+
+interface SectionOverride {
+  sectionId: string
+  content: string
+  editedAt: string
+  // Hash of exactly the values the section read when it was edited: detects
+  // upstream drift, triggers the conflict UI. Never the whole engagement.
+  baseInputsHash: string
+  // Those values, keyed by absolute view-model path, so a conflict shows old
+  // against new. Leaf values only. Null when unavailable: an override migrated
+  // from before v3, or a section that read more paths than the render layer
+  // stores (it keeps the hash and degrades to a conflict without a per-path diff).
+  baseInputs: Record<string, RenderScalar> | null
+  // The baseInputsHash this edit was kept over when Alex chose it against
+  // changed data. A trail of an edit that survived a data change without
+  // being rewritten. Null for a fresh edit.
+  rebasedFrom: string | null
 }
 
 interface Project {
@@ -760,6 +775,9 @@ rule of the new version stays as it is and fails with its issue paths. Version 2
 (`v1-to-v2.ts`) sets exactly `opportunities[].scoring`, `scope.estimate`,
 `scope.runCost` and `scope.roi` to `null` and touches nothing else, because the
 engines' behaviour changed (ARCHITECTURE, Derived data policy).
+Version 3 (`v2-to-v3.ts`) sets `baseInputs: null` and `rebasedFrom: null` on
+every section override and touches nothing else; every `baseInputsHash` is left
+as stored, so the upgrade itself puts no override into conflict.
 `runMigrations` never writes. Storage writes the result back atomically and
 stamps `Meta.lastMigratedAt` only once it returns. An optional third argument,
 `{ migrations, current }`, exists so tests can exercise the step loop with a

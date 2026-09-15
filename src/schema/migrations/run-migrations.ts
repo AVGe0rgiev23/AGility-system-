@@ -2,6 +2,7 @@ import type { z } from 'zod'
 import { WholeStoreSchema, type WholeStore } from '../store'
 import { CURRENT_SCHEMA_VERSION } from '../version'
 import { migrateV1ToV2 } from './v1-to-v2'
+import { migrateV2ToV3 } from './v2-to-v3'
 
 // Takes the whole store at version N and returns it at N + 1, including setting
 // meta.schemaVersion to N + 1. One file per bump in this folder, registered below.
@@ -10,6 +11,7 @@ export type MigrateFn = (store: unknown) => unknown
 // Keyed by the version each migration upgrades from.
 export const MIGRATIONS: Readonly<Record<number, MigrateFn>> = {
   1: migrateV1ToV2,
+  2: migrateV2ToV3,
 }
 
 export interface MigrationChain {

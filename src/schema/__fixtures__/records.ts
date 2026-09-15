@@ -375,6 +375,8 @@ export function artifactRef(): ArtifactRef {
         content: 'Rewritten opening paragraph.',
         editedAt: '2026-09-12T14:00:00.000Z',
         baseInputsHash: 'h-estimate',
+        baseInputs: { 'company.name': 'Rila Logistics' },
+        rebasedFrom: null,
       },
     ],
     lastRenderedAt: '2026-09-12T14:05:00.000Z',
@@ -542,7 +544,7 @@ export function library(): Library {
 
 export function meta(): Meta {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     createdAt: '2026-09-01T08:00:00.000Z',
     lastMigratedAt: null,
     appVersion: '0.0.0',
