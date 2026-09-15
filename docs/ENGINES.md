@@ -23,7 +23,9 @@ engine using `Config.fxRates`. Outputs are EUR. Display layers convert back.
 A `TracedValue` is money exactly when its `currency` is set. Its `unit` is display
 text: engines never parse it, and a value that carries a currency converts
 whatever its unit says. A value without a currency is not money and is used as
-is.
+is. For validated data the two always agree, since the schema allows a currency
+only on a money unit (DATA-MODEL, TracedValue); the engines still rely on
+`currency` alone.
 
 ## Calibration is applied exactly once
 

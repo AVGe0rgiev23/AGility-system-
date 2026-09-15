@@ -8,7 +8,8 @@ export const CurrencySchema = z.enum(['EUR', 'GBP', 'USD'])
 export type Currency = z.infer<typeof CurrencySchema>
 
 // A unit is money when its leading segment is a currency code ('EUR', 'GBP/hour').
-// Engines convert using `currency`, so it must be present and agree with the unit.
+// Engines tell money by `currency` alone, so it must be present on a money unit, agree with it,
+// and appear on nothing else: a currency on 'percent' would be converted at an FX rate.
 export function moneyUnitCurrency(unit: string): Currency | null {
   const parsed = CurrencySchema.safeParse(unit.split('/')[0])
   return parsed.success ? parsed.data : null
@@ -28,7 +29,16 @@ export const TracedValueSchema = z
   })
   .superRefine((traced, ctx) => {
     const unitCurrency = moneyUnitCurrency(traced.unit)
-    if (unitCurrency === null) return
+    if (unitCurrency === null) {
+      if (traced.currency !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['currency'],
+          message: `currency '${traced.currency}' is set, but unit '${traced.unit}' is not a money unit`,
+        })
+      }
+      return
+    }
     if (traced.currency === undefined) {
       ctx.addIssue({
         code: 'custom',

@@ -63,6 +63,18 @@ describe('TracedValueSchema', () => {
     expect(issuePaths(TracedValueSchema, { ...tracedMoney(), currency: 'GBP' })).toEqual(['currency'])
   })
 
+  it('rejects a currency on a unit that is not money, which the engines would convert at an FX rate', () => {
+    expect(issuePaths(TracedValueSchema, { ...tracedHours(), unit: 'percent', currency: 'EUR' })).toEqual(['currency'])
+    expect(issuePaths(TracedValueSchema, { value: 40, unit: 'per error', currency: 'GBP', source: 'default' })).toEqual(['currency'])
+    expect(issuePaths(TracedValueSchema, { ...tracedHours(), currency: 'USD' })).toEqual(['currency'])
+  })
+
+  it('names the currency and the unit when refusing a currency on a unit that is not money', () => {
+    const result = TracedValueSchema.safeParse({ value: 5, unit: 'percent', currency: 'EUR', source: 'estimated' })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe("currency 'EUR' is set, but unit 'percent' is not a money unit")
+  })
+
   it('rejects a stored BGN value, as an old export or hand-edited file would contain', () => {
     const stored = { value: 32, unit: 'BGN/hour', currency: 'BGN', source: 'client-stated' }
     expect(issuePaths(TracedValueSchema, roundTrip(stored))).toEqual(['currency'])

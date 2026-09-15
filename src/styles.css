@@ -1,0 +1,88 @@
+@import 'tailwindcss';
+
+/*
+  Design tokens. Dark, dense, technical: one background, one elevated surface, one border colour
+  and one accent. The resets below remove Tailwind's default palette, shadows, blurs and
+  animations, so a class like bg-slate-800, shadow-lg or backdrop-blur generates nothing and only
+  these tokens can be used.
+
+  accent  primary action, active nav item and the focus ring. Nothing else.
+  warn    status only: flags, low confidence, a `default` source, a stored-unit mismatch.
+  danger  status only: invalid input and refused data.
+*/
+@theme {
+  --color-*: initial;
+  --color-bg: #0e0f11;
+  --color-surface: #16171b;
+  --color-border: #26282e;
+  --color-fg: #e3e4e8;
+  --color-muted: #8b909a;
+  --color-accent: #4a55c8;
+  --color-warn: #d6a23a;
+  --color-danger: #e5534b;
+
+  --font-*: initial;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+
+  --text-*: initial;
+  --text-xs: 11px;
+  --text-xs--line-height: 16px;
+  --text-sm: 12px;
+  --text-sm--line-height: 16px;
+  --text-base: 13px;
+  --text-base--line-height: 18px;
+  --text-lg: 15px;
+  --text-lg--line-height: 20px;
+
+  --radius-*: initial;
+  --radius-sm: 2px;
+
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
+  --blur-*: initial;
+  --animate-*: initial;
+
+  --default-transition-duration: 120ms;
+}
+
+/* Every number, identifier, hour figure and currency: monospace, with digits that line up. */
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      transition: none !important;
+    }
+  }
+}
