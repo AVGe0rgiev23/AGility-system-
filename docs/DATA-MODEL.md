@@ -34,8 +34,8 @@ interface Meta {
 type Source = 'client-stated' | 'measured' | 'estimated' | 'default'
 
 interface TracedValue {
-  value: number
-  unit: string            // 'hours/week' | 'EUR' | 'percent' | 'count' | ...
+  value: number           // never negative
+  unit: string            // 'hours/week' | 'EUR' | 'percent' | 'count' | ... display text
   currency?: Currency     // required for a money unit, and must match it
   source: Source
   note?: string           // "Marta said 'about 4 hours, most weeks'"
@@ -48,8 +48,13 @@ A unit is a money unit when its leading segment, before any `/`, is a `Currency`
 code: `EUR`, `GBP/hour` and `USD/error` are money units; `hours/week` and
 `percent` are not. A money unit requires `currency`, and `currency` must equal
 the code the unit implies, so `{ unit: 'GBP/hour', currency: 'EUR' }` is
-rejected. Engines convert using `currency`, so a value whose unit and currency
-disagree could never be converted correctly.
+rejected. Engines tell money by `currency` alone and never parse `unit` (ENGINES,
+Currency rule), so a unit that names a currency must not arrive without one, and
+a value whose unit and currency disagree could never be converted correctly.
+
+`value` is never negative. Every traced figure is a count, a duration, a share or
+a cost, and a negative one would run a value or effort calculation backwards
+without any warning.
 
 Confidence scoring reads `source` across all inputs. Proposals render an
 assumptions table from every TracedValue used. Every figure Alex presents traces
@@ -330,7 +335,7 @@ interface EffortInputs {
     notes?: string
   }[]
   dataReadiness: 'structured' | 'semi-structured' | 'unstructured'
-  approvalSteps: number
+  approvalSteps: number         // a whole number, 0 or more
   complianceFlags: string[]
   volumeTier: 'low' | 'medium' | 'high'
   novelty: 'known-pattern' | 'similar-pattern' | 'new'
@@ -446,8 +451,8 @@ interface Task {
   phaseId: string
   title: string
   patternId?: string            // critical: enables calibration write-back
-  estimatedHours: number
-  actualHours: number | null
+  estimatedHours: number        // 0 or more
+  actualHours: number | null    // 0 or more; null until logged
   status: 'todo' | 'doing' | 'blocked' | 'done'
   blockedReason?: string
 }
@@ -493,13 +498,13 @@ interface CalibrationRecord {
   patternId: string
   samples: {
     engagementId: string
-    estimatedHours: number
-    actualHours: number
+    estimatedHours: number      // greater than 0: calibration divides by it
+    actualHours: number         // 0 or more
     completedAt: string
   }[]
   multiplier: number            // computed, see ENGINES
-  sampleCount: number
-  trustworthy: boolean          // sampleCount >= 3
+  sampleCount: number           // samples.length
+  trustworthy: boolean          // usable samples >= 3, see ENGINES §5
 }
 
 interface DocumentTemplate {
@@ -538,7 +543,7 @@ interface Config {
   pricing: {
     targetHourlyRate: number          // DEFAULT 65 (EUR)
     bands: {
-      id: string
+      id: string                      // unique; 'custom' only on the unbounded band
       name: string
       maxHours: number | null         // null = unbounded; exactly one band, last, id 'custom', unpriced
       floor: number | null            // null only on the custom band = no published price
@@ -638,6 +643,8 @@ every field has a valid type, and each issue names the field path shown.
 | When exactly one exists, that unbounded band is the last band | `pricing.bands.<i>.maxHours` |
 | When exactly one exists, that unbounded band has `id: 'custom'` | `pricing.bands.<i>.id` |
 | When exactly one exists, that unbounded band has `floor: null` and `ceiling: null` | `pricing.bands.<i>.floor`, `pricing.bands.<i>.ceiling` |
+| When exactly one exists, no bounded band has `id: 'custom'` | `pricing.bands.<i>.id`, on the bounded band |
+| Band ids are unique; a bounded band already reported for `id: 'custom'` is not reported again | `pricing.bands.<i>.id`, on the later band |
 | Bounded `maxHours` values strictly ascend: no repeats, no decreases | `pricing.bands.<i>.maxHours`, on the later band |
 | `pricing.supportMonthly.floor` is not above its `ceiling` | `pricing.supportMonthly.floor` |
 | Each `estimation.overheads` value is in [0, 1) | `estimation.overheads.<key>` |
@@ -652,10 +659,15 @@ every field has a valid type, and each issue names the field path shown.
 Why the less obvious rules exist:
 
 - **Unbounded band last, with id `custom` and no price.** Estimation takes the
-  first band that fits and falls through to the unbounded band, and it flags
-  `CUSTOM_QUOTE` by that band's id (ENGINES §2). A renamed or misplaced catch-all
-  band would silently publish a price where there should be none, and a floor or
-  ceiling on it would clamp a price the estimate still calls a custom quote.
+  first band that fits and falls through to the unbounded band, which it
+  recognises by `maxHours: null` and quotes by hand as `CUSTOM_QUOTE` (ENGINES
+  §2). A misplaced catch-all band would swallow scopes a later priced band should
+  take. A floor or ceiling on it would look like a published price that the
+  estimate silently ignores. The fixed id lets every result and document name the
+  manual quote the same way.
+- **Unique band ids, with `custom` reserved.** The estimate reports its band by
+  id, so a shared id would make that band ambiguous. On a priced band, `custom`
+  would read as a quote with no price.
 - **Only the custom band goes unpriced.** The estimate clamps a bounded band's
   price between its floor and ceiling. A bounded band without them would price
   unclamped and raise no flag, publishing a figure nobody set.
@@ -719,6 +731,12 @@ It refuses, with a `MigrationError` and a plain message:
   or whose `meta.schemaVersion` was not advanced to the current version.
 
 Steps run on a copy, so a failure leaves the caller's data untouched.
+
+A migration never drops or repairs data to make it validate. Data that breaks a
+rule of the new version stays as it is and fails with its issue paths. Version 2
+(`v1-to-v2.ts`) sets exactly `opportunities[].scoring`, `scope.estimate`,
+`scope.runCost` and `scope.roi` to `null` and touches nothing else, because the
+engines' behaviour changed (ARCHITECTURE, Derived data policy).
 `runMigrations` never writes. Storage writes the result back atomically and
 stamps `Meta.lastMigratedAt` only once it returns. An optional third argument,
 `{ migrations, current }`, exists so tests can exercise the step loop with a

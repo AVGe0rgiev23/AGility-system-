@@ -68,6 +68,18 @@ a mismatch triggers a silent recompute and write-back.
 This means: a stale cached score can never be shown to a client, and a Config
 change (say, raising the hourly rate) correctly invalidates every engagement.
 
+**The hash covers inputs, not engine behaviour.** When an engine changes what it
+computes from the same inputs, every stored hash still matches, and the old
+results would be served forever. Such a change therefore ships with a schema
+migration that sets the affected cached results to `null`, as `v1-to-v2.ts` does.
+They recompute on load, with the same hashes as before.
+
+**Conflict detection compares hashes, never results.** Stage 3 decides whether an
+override has drifted by comparing its `baseInputsHash` with the current
+`inputsHash`. It never compares recomputed results with earlier ones. An
+engine-behaviour migration recomputes results under unchanged hashes, so
+comparing results would mark every existing override as conflicted after it.
+
 ## Persistence
 
 **Working store:** IndexedDB via Dexie. Tables `engagements`, `library`,
