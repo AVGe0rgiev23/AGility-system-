@@ -59,7 +59,7 @@ src/
   storage/      db.ts, repository.ts, derived.ts, sync.ts, transfer.ts
   engines/      scoring, roi, estimate, run-cost, calibration, signals
   render/       view-model, resolve, template, overrides, nodes; print layout (Stage 3)
-  hooks/        useEngagement, useLibrary, useConfig, useDerived
+  hooks/        useStore, useTracedDraft; useEngagement, useLibrary, useConfig, useDerived
   ui/           shell/, primitives/, views/
   app.tsx
 ```
@@ -220,6 +220,66 @@ your records. Nothing reads them. Deleting the folder loses no application data.
 manual export and import buttons and a persistent warning that no folder is
 connected. `sync.ts` reports the status and the warning text for every state
 short of a healthy connection; the banner itself is part of the app shell.
+
+## User interface
+
+**Entry and shell.** `main.tsx` creates the store runtime once, outside React
+(`hooks/use-store.ts`), and renders `app.tsx`, the only module outside `ui/` that
+imports from it. `useStore` boots the runtime once, even under StrictMode. It loads
+the store, then restores the folder from the loaded Config, and a folder that
+cannot be restored never hides a store that loaded. Every screen has a hash
+address (`ui/shell/router.ts`). Above every page the shell shows:
+
+- the sync banner, from `warningFor`, with Connect or Reconnect when a user
+  gesture can fix it
+- a restore failure, a migration, or a skipped recompute
+- a table of the stored records that do not validate
+
+A refused load replaces the page with its reason, message and issue paths.
+
+**Tokens.** `src/styles.css` resets Tailwind's palette, shadows, blurs and
+animations, so only the tokens exist: `bg`, `surface`, `border`, `fg`, `muted`,
+`accent`, `warn`, `danger`.
+
+- **Accent** marks only the primary action, the active nav item and the focus
+  ring.
+- **Warn** and **danger** are status colours, never decoration. Warn: flags, low
+  confidence, a `default` source, a stored-unit mismatch. Danger: invalid input,
+  refused data.
+
+**Numbers.** A figure renders through `InlineStat` or `Stat`. Their props require
+a source (for a TracedValue) or a confidence (for a computed figure), so a bare
+number cannot be rendered. Display uses a fixed `en-GB` locale with grouping, so
+it rounds and prints `1,200.50`. When it rounds, the exact value is in the
+element's title.
+
+**TracedInput** is every numeric input. Its rules live in
+`hooks/use-traced-draft.ts` as pure functions:
+
+- **The field fixes the unit.** Engines never parse units, so letting the user
+  pick one would let a minutes field carry hours. A money field builds its unit
+  from the chosen currency, `EUR` or `EUR/hour`; no other field has a currency.
+- **There is no default source.** Nothing is emitted until one is chosen: a
+  silent `client-stated` would inflate confidence, and a silent `default` would
+  raise `DEFAULT_COST`.
+- **Only values that pass `TracedValueSchema` are emitted.** Its messages are the
+  ones shown, so the UI decides text syntax only.
+- **Typed numbers:**
+  - The dot form, including the exponent form `String(value)` produces, is
+    accepted.
+  - A single comma is accepted as the decimal point when unambiguous:
+    `1200,50` is 1200.5.
+  - Refused as ambiguous, because a guess risks a thousandfold error: more than
+    one comma, a comma with a dot, or a comma followed by exactly three digits
+    (`1,200`).
+  - Parsing keeps the exact number. The editable text is `String(value)`, never
+    display output, so any stored value can be edited and read back unchanged.
+- **A stored unit the field does not record** is shown as a warning. The next
+  edit replaces it with the field's unit.
+- **The draft is replaced only when the parent's value changes** to something
+  the draft does not stand for, so an echoed value keeps the typed text and an
+  invalid draft is never overwritten. The parent must apply `onChange` before the
+  next keystroke, as synchronous React state does.
 
 ## Security model
 
