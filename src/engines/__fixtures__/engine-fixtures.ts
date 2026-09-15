@@ -24,7 +24,10 @@ export interface ScoredOpportunity {
   scoring: ScoringResult
 }
 
-export type CalibrationLookup = Record<string, { multiplier: number; sampleCount: number; trustworthy: boolean }>
+export type CalibrationLookup = Record<
+  string,
+  { multiplier: number; sampleCount: number; usableSampleCount: number; trustworthy: boolean }
+>
 
 export interface ROIInput {
   scored: ScoredOpportunity[]
@@ -211,10 +214,12 @@ export function randomCalibration(random: Random): CalibrationLookup {
   for (const patternId of PATTERN_IDS) {
     if (random() < 0.3) continue
     const sampleCount = randomInt(random, 0, 12)
+    const usableSampleCount = randomInt(random, 0, sampleCount)
     lookup[patternId] = {
-      multiplier: sampleCount < 3 ? 1 : randomNumber(random, 0.5, 3),
+      multiplier: usableSampleCount < 3 ? 1 : randomNumber(random, 0.5, 3),
       sampleCount,
-      trustworthy: sampleCount >= 3,
+      usableSampleCount,
+      trustworthy: usableSampleCount >= 3,
     }
   }
   return lookup

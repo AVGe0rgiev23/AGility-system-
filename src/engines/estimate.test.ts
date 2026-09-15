@@ -54,7 +54,7 @@ function flatConfig(): Config {
 }
 
 const calibrated: CalibrationLookup = {
-  'pat-email-triage': { multiplier: 1.4, sampleCount: 5, trustworthy: true },
+  'pat-email-triage': { multiplier: 1.4, sampleCount: 5, usableSampleCount: 5, trustworthy: true },
 }
 
 describe('estimateScope hours (§2)', () => {
@@ -88,7 +88,7 @@ describe('estimateScope hours (§2)', () => {
   })
 
   it('ignores calibration for patterns that are linked but not primary', () => {
-    const calibration: CalibrationLookup = { 'pat-crm-sync': { multiplier: 3, sampleCount: 9, trustworthy: true } }
+    const calibration: CalibrationLookup = { 'pat-crm-sync': { multiplier: 3, sampleCount: 9, usableSampleCount: 9, trustworthy: true } }
     const result = estimateScope(baseInput({ calibration }))
     expect(result.calibratedHours).toBeCloseTo(21.5, 10)
     expect(result.flags).toContain('UNCALIBRATED_PATTERN')
@@ -258,7 +258,7 @@ describe('estimateScope flags (§2)', () => {
   it('flags UNCALIBRATED_PATTERN when any used pattern is untrustworthy', () => {
     const calibration: CalibrationLookup = {
       ...calibrated,
-      'pat-crm-sync': { multiplier: 1, sampleCount: 2, trustworthy: false },
+      'pat-crm-sync': { multiplier: 1, sampleCount: 4, usableSampleCount: 2, trustworthy: false },
     }
     const mixed = estimateScope(
       baseInput({ scored: [scored({ id: 'a' }), scored({ id: 'b', primaryPatternId: 'pat-crm-sync' })], calibration }),
@@ -319,7 +319,7 @@ describe('estimateScope output shape', () => {
     only.scoring.annualValue = 1
     only.scoring.computedAt = '2030-01-01T00:00:00.000Z'
     only.scoring.inputsHash = 'other'
-    input.calibration = { 'pat-unused': { multiplier: 2, sampleCount: 5, trustworthy: true } }
+    input.calibration = { 'pat-unused': { multiplier: 2, sampleCount: 5, usableSampleCount: 5, trustworthy: true } }
     input.config.pricing.supportMonthly = { floor: 1, ceiling: 2 }
     input.config.estimation.fallbackPatternHours = 99
     input.config.scoring.valueCeiling = 1

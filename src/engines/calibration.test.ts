@@ -47,15 +47,20 @@ describe('calibration constants', () => {
 
 describe('computeCalibration', () => {
   it('yields exactly 1.0 and untrustworthy with no samples', () => {
-    expect(computeCalibration([])).toEqual({ multiplier: 1, sampleCount: 0, trustworthy: false })
+    expect(computeCalibration([])).toEqual({ multiplier: 1, sampleCount: 0, usableSampleCount: 0, trustworthy: false })
   })
 
   it('yields exactly 1.0 and untrustworthy below the sample threshold', () => {
-    expect(computeCalibration(samples(2.5, 2.5))).toEqual({ multiplier: 1, sampleCount: 2, trustworthy: false })
+    expect(computeCalibration(samples(2.5, 2.5))).toEqual({ multiplier: 1, sampleCount: 2, usableSampleCount: 2, trustworthy: false })
   })
 
   it('takes the median ratio once the threshold is met', () => {
-    expect(computeCalibration(samples(0.8, 1.5, 1.2))).toEqual({ multiplier: 1.2, sampleCount: 3, trustworthy: true })
+    expect(computeCalibration(samples(0.8, 1.5, 1.2))).toEqual({
+      multiplier: 1.2,
+      sampleCount: 3,
+      usableSampleCount: 3,
+      trustworthy: true,
+    })
   })
 
   it('averages the two middle ratios for an even count', () => {
@@ -77,16 +82,30 @@ describe('computeCalibration', () => {
     const result = computeCalibration([...old, ...recent])
     expect(result.multiplier).toBeCloseTo(1.1, 12)
     expect(result.sampleCount).toBe(15)
+    expect(result.usableSampleCount).toBe(15)
   })
 
-  it('ignores a sample whose estimate is not positive, since its ratio is undefined', () => {
+  it('counts a sample whose estimate is not positive but neither uses nor trusts it, since its ratio is undefined', () => {
     const broken: CalibrationSample = { ...sample(1), estimatedHours: 0, actualHours: 12 }
     expect(computeCalibration([broken, ...samples(1.2, 1.2, 1.2)])).toEqual({
       multiplier: 1.2,
-      sampleCount: 3,
+      sampleCount: 4,
+      usableSampleCount: 3,
       trustworthy: true,
     })
-    expect(computeCalibration([broken, broken, broken])).toEqual({ multiplier: 1, sampleCount: 0, trustworthy: false })
+    // Three samples, but only two usable: still below the threshold.
+    expect(computeCalibration([broken, ...samples(2, 2)])).toEqual({
+      multiplier: 1,
+      sampleCount: 3,
+      usableSampleCount: 2,
+      trustworthy: false,
+    })
+    expect(computeCalibration([broken, broken, broken])).toEqual({
+      multiplier: 1,
+      sampleCount: 3,
+      usableSampleCount: 0,
+      trustworthy: false,
+    })
   })
 
   it('does not mutate its input', () => {
@@ -98,12 +117,21 @@ describe('computeCalibration', () => {
 })
 
 describe('computeCalibration invariants', () => {
-  it('fewer than three samples always yields exactly 1.0 and untrustworthy', () => {
+  it('fewer than three usable samples always yields exactly 1.0 and untrustworthy, however many samples there are', () => {
     const random = mulberry32(21)
     for (let i = 0; i < 300; i++) {
-      const count = randomInt(random, 0, CALIBRATION_MIN_SAMPLES - 1)
-      const input = Array.from({ length: count }, (_, index) => randomSample(random, index))
-      expect(computeCalibration(input), `case ${i}`).toEqual({ multiplier: 1, sampleCount: count, trustworthy: false })
+      const usable = randomInt(random, 0, CALIBRATION_MIN_SAMPLES - 1)
+      const unusable = randomInt(random, 0, 5)
+      const input = [
+        ...Array.from({ length: usable }, (_, index) => randomSample(random, index)),
+        ...Array.from({ length: unusable }, (_, index) => ({ ...randomSample(random, 100 + index), estimatedHours: 0 })),
+      ]
+      expect(computeCalibration(input), `case ${i}`).toEqual({
+        multiplier: 1,
+        sampleCount: usable + unusable,
+        usableSampleCount: usable,
+        trustworthy: false,
+      })
     }
   })
 
@@ -154,7 +182,7 @@ describe('buildCalibrationLookup', () => {
       trustworthy: false,
     }
     expect(buildCalibrationLookup([record])).toEqual({
-      'pat-email-triage': { multiplier: 1.4, sampleCount: 3, trustworthy: true },
+      'pat-email-triage': { multiplier: 1.4, sampleCount: 3, usableSampleCount: 3, trustworthy: true },
     })
   })
 
@@ -164,6 +192,7 @@ describe('buildCalibrationLookup', () => {
     expect(buildCalibrationLookup([first, second])['pat-email-triage']).toEqual({
       multiplier: 1.5,
       sampleCount: 3,
+      usableSampleCount: 3,
       trustworthy: true,
     })
   })
@@ -182,7 +211,12 @@ describe('buildCalibrationLookup', () => {
 describe('lookupCalibration', () => {
   it('returns the entry for a known pattern and undefined otherwise', () => {
     const lookup = buildCalibrationLookup([{ ...calibrationRecord(), samples: samples(1.3, 1.3, 1.3) }])
-    expect(lookupCalibration(lookup, 'pat-email-triage')).toEqual({ multiplier: 1.3, sampleCount: 3, trustworthy: true })
+    expect(lookupCalibration(lookup, 'pat-email-triage')).toEqual({
+      multiplier: 1.3,
+      sampleCount: 3,
+      usableSampleCount: 3,
+      trustworthy: true,
+    })
     expect(lookupCalibration(lookup, 'pat-unknown')).toBeUndefined()
     expect(lookupCalibration(lookup, null)).toBeUndefined()
   })
