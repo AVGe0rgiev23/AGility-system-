@@ -267,26 +267,32 @@ element's title.
 - **Typed numbers:**
   - The dot form, including the exponent form `String(value)` produces, is
     accepted.
-  - A single comma is always the decimal point: `1200,50` is 1200.5.
-  - A comma followed by exactly three digits is no exception. `1,200` is read as
-    1.2 and accepted, with an inline warning in the warn colour naming both
-    readings: "Read as 1.2, not 1200. Use 1200 or 1200.00 if the comma was a
-    thousands separator." The warning never blocks the value.
-    - **Why not refuse it?** Refusing would block a common European entry.
-    - **Why not decide by context,** such as whether the field was already
-      filled? The same keystrokes would then mean different numbers, and the
-      wrong one would surface in a proposal on exactly the edit that feels
-      trivial.
-    - **Consistency.** A number is never silently reinterpreted, the same rule
-      as the stored-unit warning. Stored values load as `String(value)`, so they
-      never trigger it.
-  - Refused as ambiguous, because it says nothing certain about which mark is
-    the decimal: more than one comma (`1,200,000`), or a comma with a dot
-    (`1.200,50`).
+  - **A dot before exactly three digits** (`1.200`, `12.345`) is German
+    thousands notation as often as it is a decimal.
+    - What counts: one to three whole digits, not starting with zero, then the
+      dot and three digits. `0.125` and `1234.567` cannot be thousands groups and
+      never warn.
+    - It is read as the decimal and accepted, with an inline warning in the warn
+      colour naming the other reading: "Read as 1.2, not 1200. Use 1200 or
+      1200.00 if the dot was a thousands separator." The warning never blocks the
+      value.
+    - The warning depends on the text alone, never on whether the field was
+      pre-filled. Deciding by context would make the same keystrokes mean
+      different numbers, and the wrong one would surface in a proposal on exactly
+      the edit that feels trivial.
+    - Accepted knowingly: a stored `1.125` warns every time its field is opened,
+      exactly as if it had been typed. If a field turns out to hold three-decimal
+      values routinely, the fix is a per-field opt-out, never a change to this
+      rule.
+  - A single comma is accepted as the decimal point when unambiguous:
+    `1200,50` is 1200.5.
+  - Refused as ambiguous, because a guess risks a thousandfold error: more than
+    one comma, a comma with a dot, or a comma followed by exactly three digits
+    (`1,200`).
   - Parsing keeps the exact number. The editable text is `String(value)`, never
     display output, so any stored value can be edited and read back unchanged.
-- **A stored unit the field does not record** is shown as a warning. The next
-  edit replaces it with the field's unit.
+- **A stored unit the field does not record** is shown as a warning, in the same
+  place as the dot warning. The next edit replaces it with the field's unit.
 - **The draft is replaced only when the parent's value changes** to something
   the draft does not stand for, so an echoed value keeps the typed text and an
   invalid draft is never overwritten. The parent must apply `onChange` before the

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { mulberry32, pick, randomInt, randomNumber, type Random } from '../../engines/__fixtures__/engine-fixtures'
-import { commaReadingWarning, parseNumberText } from '../../hooks/use-traced-draft'
+import { parseNumberText } from '../../hooks/use-traced-draft'
 import type { Currency, TracedValue } from '../../schema/traced'
 import { formatNumber } from '../format'
 import { Stat } from './stat'
@@ -67,6 +67,14 @@ describe('TracedInput', () => {
     expect(html).not.toContain('role="alert"')
   })
 
+  it('warns inline about a stored number with three decimals that could be read as thousands, and still shows it', () => {
+    const stored: TracedValue = { value: 1.125, unit: 'minutes', source: 'measured' }
+    const html = renderToStaticMarkup(<TracedInput label="Minutes per occurrence" value={stored} unit="minutes" required onChange={ignore} />)
+    expect(valueBoxText(html)).toBe('1.125')
+    expect(html).toContain('text-warn">Read as 1.125, not 1125. Use 1125 or 1125.00 if the dot was a thousands separator.<')
+    expect(html).toContain('aria-invalid="false"')
+  })
+
   it('warns about a stored unit the field does not record', () => {
     const stored: TracedValue = { value: 2, unit: 'hours', source: 'client-stated' }
     const html = renderToStaticMarkup(<TracedInput label="Minutes per occurrence" value={stored} unit="minutes" required onChange={ignore} />)
@@ -126,27 +134,17 @@ describe('display to edit round trip', () => {
     }
   })
 
-  it('refuses grouped display text pasted into the value box, reads it within display rounding, or names the misread: never a silent thousandfold error', () => {
+  it('refuses grouped display text pasted into the value box, or reads it within display rounding, never a thousandfold misread', () => {
     expect(parseNumberText(formatNumber(1200.5, 'EUR')).kind).toBe('invalid')
-    // Plain display groups a whole number with one comma, which reads as a decimal and says so.
-    expect(parseNumberText(formatNumber(1234))).toEqual({ kind: 'number', value: 1.234, warning: commaReadingWarning(1.234, 1234) })
-    let warned = 0
+    expect(parseNumberText(formatNumber(1234)).kind).toBe('invalid')
     for (const figure of figures()) {
       const shown = formatNumber(figure.value, figure.currency)
       const parsed = parseNumberText(shown)
-      const label = `${shown} for ${String(figure.value)}`
-      if (parsed.kind !== 'number') {
-        expect(parsed.kind, label).toBe('invalid')
-      } else if (parsed.warning === null) {
-        expect(Math.abs(parsed.value - figure.value), label).toBeLessThanOrEqual(0.005 + 1e-9)
+      if (parsed.kind === 'number') {
+        expect(Math.abs(parsed.value - figure.value), `${shown} for ${String(figure.value)}`).toBeLessThanOrEqual(0.005 + 1e-9)
       } else {
-        // The warning's other reading is the figure as it was shown.
-        warned++
-        const grouped = Number(shown.replace(',', ''))
-        expect(parsed.warning, label).toBe(commaReadingWarning(parsed.value, grouped))
-        expect(Math.abs(grouped - figure.value), label).toBeLessThanOrEqual(0.005 + 1e-9)
+        expect(parsed.kind, shown).toBe('invalid')
       }
     }
-    expect(warned).toBeGreaterThan(0)
   })
 })

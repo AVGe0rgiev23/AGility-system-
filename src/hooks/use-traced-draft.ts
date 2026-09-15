@@ -34,8 +34,8 @@ export const NOT_A_NUMBER = 'Not a number: use digits with one decimal separator
 export const VALUE_REQUIRED = 'A value is required'
 export const SOURCE_REQUIRED = 'Choose where this figure comes from'
 
-// `warning` is set when the number was read one way and could have been meant another. The value is
-// accepted all the same; the warning is shown beside it and never blocks.
+// `warning` is set when the text was read one way and could have been meant another. The number
+// is accepted all the same: the warning is shown beside it and never blocks.
 export type ParsedNumber =
   | { kind: 'empty' }
   | { kind: 'number'; value: number; warning: string | null }
@@ -45,40 +45,40 @@ export type ParsedNumber =
 const DOT_FORM = /^-?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i
 const COMMA_FORM = /^-?(\d+,\d*|,\d+)$/
 const SEPARATED_DIGITS = /^-?[\d.,]+$/
-// Digits, one comma, exactly three digits: a thousands group in English, a decimal across most of Europe.
-const GROUP_LIKE = /^-?\d+,\d{3}$/
+// One to three whole digits, not starting with zero, a dot and exactly three digits: the only shape a
+// German thousands group can take ('1.200', '999.999'). '0.125' and '1234.567' cannot be one.
+const DOT_GROUP_LIKE = /^-?[1-9]\d{0,2}\.\d{3}$/
 
-export function commaReadingWarning(value: number, grouped: number): string {
-  return `Read as ${String(value)}, not ${String(grouped)}. Use ${String(grouped)} or ${String(grouped)}.00 if the comma was a thousands separator.`
-}
-
-// '-0' is zero; a signed zero would survive as a distinct value until JSON silently dropped the sign.
-function readNumber(value: number, warning: string | null): ParsedNumber {
-  return { kind: 'number', value: value === 0 ? 0 : value, warning }
+export function dotReadingWarning(value: number, grouped: number): string {
+  return `Read as ${String(value)}, not ${String(grouped)}. Use ${String(grouped)} or ${String(grouped)}.00 if the dot was a thousands separator.`
 }
 
 export function parseNumberText(text: string): ParsedNumber {
   const trimmed = text.trim()
   if (trimmed === '') return { kind: 'empty' }
-  if (!trimmed.includes(',')) {
-    return DOT_FORM.test(trimmed) ? readNumber(Number(trimmed), null) : { kind: 'invalid', message: NOT_A_NUMBER }
+  let normalised = trimmed
+  if (trimmed.includes(',')) {
+    if (!SEPARATED_DIGITS.test(trimmed)) return { kind: 'invalid', message: NOT_A_NUMBER }
+    // A comma is a decimal point only when nothing else could be meant. '1.200,50' and '1,200.50'
+    // mix separators, and '1,200' reads as 1200 in English but 1.2 across most of Europe: guessing
+    // either risks a thousandfold error in a client's figure, so they are refused.
+    if (trimmed.indexOf(',') !== trimmed.lastIndexOf(',') || trimmed.includes('.')) {
+      return { kind: 'invalid', message: AMBIGUOUS_NUMBER }
+    }
+    if (!COMMA_FORM.test(trimmed)) return { kind: 'invalid', message: NOT_A_NUMBER }
+    if (trimmed.length - trimmed.indexOf(',') - 1 === 3) return { kind: 'invalid', message: AMBIGUOUS_NUMBER }
+    normalised = trimmed.replace(',', '.')
+  } else if (!DOT_FORM.test(trimmed)) {
+    return { kind: 'invalid', message: NOT_A_NUMBER }
   }
-  if (!SEPARATED_DIGITS.test(trimmed)) return { kind: 'invalid', message: NOT_A_NUMBER }
-  // '1.200,50', '1,200.50' and '1,200,000' can only be grouped, and grouped in a way that says
-  // nothing certain about which mark is the decimal, so they are refused.
-  if (trimmed.indexOf(',') !== trimmed.lastIndexOf(',') || trimmed.includes('.')) {
-    return { kind: 'invalid', message: AMBIGUOUS_NUMBER }
-  }
-  if (!COMMA_FORM.test(trimmed)) return { kind: 'invalid', message: NOT_A_NUMBER }
-  const value = Number(trimmed.replace(',', '.'))
-  if (!GROUP_LIKE.test(trimmed)) return readNumber(value, null)
-  // '1,200' is always 1.2, whatever the field held before, so the same keystrokes always mean the
-  // same number. Refusing it would block a common European entry; deciding by context would let the
-  // wrong reading slip into a proposal on exactly the edit that feels trivial. So it is accepted,
-  // and the other reading is named beside it.
-  const grouped = Number(trimmed.replace(',', ''))
-  // The two readings differ unless every digit is zero ('0,000'), and then there is nothing to warn about.
-  return readNumber(value, value === grouped ? null : commaReadingWarning(value, grouped))
+  const value = Number(normalised)
+  // '1.200' is always the decimal 1.2, whether typed into a blank field or over a stored value, so
+  // the same keystrokes always mean the same number. Refusing it would also refuse editing a stored
+  // 1.125, and deciding by context would let the wrong reading slip into a proposal. So it is
+  // accepted and the thousands reading is named beside it, from the text alone.
+  const warning = DOT_GROUP_LIKE.test(trimmed) ? dotReadingWarning(value, Number(trimmed.replace('.', ''))) : null
+  // '-0' is zero; a signed zero would survive as a distinct value until JSON silently dropped the sign.
+  return { kind: 'number', value: value === 0 ? 0 : value, warning }
 }
 
 export function unitFor(field: TracedField, currency: Currency | null): string {
@@ -143,9 +143,9 @@ export function unitMismatch(value: TracedValue | null, field: TracedField): str
   return `Stored with unit '${value.unit}', but this field records '${expected}'. The number is used as ${expected}, and the next edit saves that unit.`
 }
 
-// Everything worth seeing about a field that does not stop it saving: a stored unit it does not
-// record, and a typed number that could have been meant another way. Shown as it is typed, since
-// the value is already being used.
+// Everything worth seeing about a field that does not stop it saving: a stored unit it does not record,
+// and a number read one of two ways. Both come from what is there now, typed or loaded alike, and show
+// at once, since the value is already in use.
 export function draftWarnings(text: string, value: TracedValue | null, field: TracedField): string[] {
   const parsed = parseNumberText(text)
   const reading = parsed.kind === 'number' ? parsed.warning : null
