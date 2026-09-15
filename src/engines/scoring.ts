@@ -4,7 +4,7 @@ import type { Pattern } from '../schema/library'
 import type { Opportunity } from '../schema/opportunity'
 import type { Process } from '../schema/process'
 import type { ScoringResult } from '../schema/results'
-import { moneyUnitCurrency, type Source, type TracedValue } from '../schema/traced'
+import type { Source, TracedValue } from '../schema/traced'
 import { fmt } from './format'
 import { hashInputs } from './inputs-hash'
 
@@ -65,19 +65,12 @@ function worstSource(sources: readonly Source[]): Source {
   return worst
 }
 
-// Money inputs carry their own currency; fxRates holds units per 1 EUR. A value without a
-// currency is not a money unit (the schema enforces that), so it is used as is.
+// A value is money exactly when it carries a currency; its unit is display text and is never
+// parsed. fxRates holds units per 1 EUR. A value without a currency is used as is.
 export function toAgencyCurrency(traced: TracedValue, config: Config): number {
   const currency = traced.currency ?? config.agencyCurrency
   if (currency === config.agencyCurrency) return traced.value
   return traced.value / config.fxRates.rates[currency]
-}
-
-// 'EUR/hour' and the like. A cost in any other unit would be multiplied by hours regardless,
-// so scoring warns about it and ROI relies on it to find hourly costs among the assumptions.
-export function isHourlyCostUnit(unit: string): boolean {
-  const segments = unit.split('/')
-  return segments.length === 2 && segments[1] === 'hour' && moneyUnitCurrency(unit) !== null
 }
 
 function resolveLinked<T extends { id: string }>(ids: readonly string[], items: readonly T[], onMissing: (id: string) => void): T[] {
@@ -163,9 +156,10 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     } else {
       assume(cost)
       if (cost.source !== 'client-stated') everyHourlyCostClientStated = false
-      if (!isHourlyCostUnit(cost.unit)) {
+      // Without a currency the figure is not money, yet it is still multiplied by hours as if it were.
+      if (cost.currency === undefined) {
         warnings.push(
-          `NON_HOURLY_COST_UNIT: the hourly cost for '${process.name}' is in '${cost.unit}', not a currency per hour; check the figure`,
+          `NON_HOURLY_COST_UNIT: the hourly cost for '${process.name}' carries no currency, so it is not a money figure and is used as ${eur}; check the figure`,
         )
       }
       const costEur = toAgencyCurrency(cost, config)

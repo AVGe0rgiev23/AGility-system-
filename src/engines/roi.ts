@@ -4,7 +4,7 @@ import type { TracedValue } from '../schema/traced'
 import type { ScoredOpportunity } from './estimate'
 import { fmt } from './format'
 import { canonicalJson, hashInputs } from './inputs-hash'
-import { isHourlyCostUnit, LOW_CONFIDENCE_THRESHOLD } from './scoring'
+import { LOW_CONFIDENCE_THRESHOLD } from './scoring'
 
 // ENGINES §4: above this share of the gross annual value, the running cost eats the case.
 export const RUN_COST_SHARE_THRESHOLD = 0.3
@@ -96,8 +96,10 @@ export function computeROI(input: ROIInput): ROIResult {
       `RUN_COST_EATS_CASE: the running cost of ${fmt(annualRunCost)} ${currency}/year is above ${fmt(RUN_COST_SHARE_THRESHOLD * 100)}% of the ${fmt(grossAnnualValue)} ${currency}/year value`,
     )
   }
-  if (assumptions.some((traced) => traced.source === 'default' && isHourlyCostUnit(traced.unit))) {
-    warnings.push('DEFAULT_HOURLY_COST: an hourly cost in this case is a default; you are quoting on a made-up salary')
+  // Money is told by its currency alone, which cannot separate an hourly cost from a cost per
+  // error, so any default money figure warns: either way the case rests on a made-up cost.
+  if (assumptions.some((traced) => traced.source === 'default' && traced.currency !== undefined)) {
+    warnings.push('DEFAULT_COST: a cost in this case is a default, not a figure the client gave; you are quoting on made-up money')
   }
 
   // Exactly the fields read above from each upstream result, so a scoring recompute with the

@@ -203,16 +203,20 @@ describe('computeROI warnings (§4)', () => {
     expect(edge.warnings).not.toContainEqual(expect.stringMatching(/^RUN_COST_EATS_CASE: /))
   })
 
-  it('warns when any hourly cost among the assumptions is a default', () => {
-    const madeUp: TracedValue = { value: 20, unit: 'EUR/hour', currency: 'EUR', source: 'default' }
-    const result = computeROI(baseInput({ scored: [scored({ assumptions: [tracedHours(), madeUp] })] }))
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^DEFAULT_HOURLY_COST: /))
-    const estimated: TracedValue = { ...madeUp, source: 'estimated' }
+  it('warns when any money figure among the assumptions is a default, telling money by its currency', () => {
+    const hourly: TracedValue = { value: 20, unit: 'EUR/hour', currency: 'EUR', source: 'default' }
+    const perError: TracedValue = { value: 40, unit: 'per error', currency: 'GBP', source: 'default' }
+    for (const madeUp of [hourly, perError]) {
+      const result = computeROI(baseInput({ scored: [scored({ assumptions: [tracedHours(), madeUp] })] }))
+      expect(result.warnings, madeUp.unit).toContainEqual(expect.stringMatching(/^DEFAULT_COST: /))
+    }
+    const estimated: TracedValue = { ...hourly, source: 'estimated' }
     const fine = computeROI(baseInput({ scored: [scored({ assumptions: [estimated] })] }))
-    expect(fine.warnings).not.toContainEqual(expect.stringMatching(/^DEFAULT_HOURLY_COST: /))
-    const otherDefault: TracedValue = { value: 80, unit: 'percent', source: 'default' }
-    const notHourly = computeROI(baseInput({ scored: [scored({ assumptions: [otherDefault] })] }))
-    expect(notHourly.warnings).not.toContainEqual(expect.stringMatching(/^DEFAULT_HOURLY_COST: /))
+    expect(fine.warnings).not.toContainEqual(expect.stringMatching(/^DEFAULT_COST: /))
+    // No currency means not money, whatever the unit says.
+    const notMoney: TracedValue = { value: 80, unit: 'EUR-ish percent', source: 'default' }
+    const result = computeROI(baseInput({ scored: [scored({ assumptions: [notMoney] })] }))
+    expect(result.warnings).not.toContainEqual(expect.stringMatching(/^DEFAULT_COST: /))
   })
 })
 

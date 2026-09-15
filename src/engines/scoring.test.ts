@@ -11,7 +11,6 @@ import {
   CONFIDENCE_MIN,
   CONFIDENCE_PENALTIES,
   EFFORT_POINTS,
-  isHourlyCostUnit,
   LOW_CONFIDENCE_THRESHOLD,
   QUADRANT_THRESHOLD,
   scoreOpportunity,
@@ -133,17 +132,6 @@ describe('toAgencyCurrency', () => {
   })
 })
 
-describe('isHourlyCostUnit', () => {
-  it('accepts a currency code per hour and nothing else', () => {
-    expect(isHourlyCostUnit('EUR/hour')).toBe(true)
-    expect(isHourlyCostUnit('GBP/hour')).toBe(true)
-    expect(isHourlyCostUnit('EUR')).toBe(false)
-    expect(isHourlyCostUnit('EUR/day')).toBe(false)
-    expect(isHourlyCostUnit('hours/week')).toBe(false)
-    expect(isHourlyCostUnit('EUR/hour/person')).toBe(false)
-  })
-})
-
 describe('scoreOpportunity value (§1.1)', () => {
   it('computes the worked example', () => {
     const result = scoreOpportunity(baseInput())
@@ -199,10 +187,16 @@ describe('scoreOpportunity value (§1.1)', () => {
     expect(row(result, 'Quote request to CRM entry: effective hourly cost')).toMatchObject({ value: 0, source: 'default' })
   })
 
-  it('warns when an hourly cost is not stated per hour', () => {
-    const input = baseInput()
-    input.company.blendedHourlyCost = { value: 16, unit: 'EUR', currency: 'EUR', source: 'estimated' }
-    expect(scoreOpportunity(input).warnings).toContainEqual(expect.stringMatching(/^NON_HOURLY_COST_UNIT: /))
+  it('warns when an hourly cost carries no currency, and reads money from the currency, never the unit', () => {
+    const noCurrency = baseInput()
+    noCurrency.company.blendedHourlyCost = { value: 16, unit: 'rate', source: 'estimated' }
+    expect(scoreOpportunity(noCurrency).warnings).toContainEqual(expect.stringMatching(/^NON_HOURLY_COST_UNIT: /))
+    // The unit is display text: a currency-carrying cost in any unit is money and converts.
+    const oddUnit = baseInput()
+    oddUnit.company.blendedHourlyCost = { value: 17, unit: 'per person-hour', currency: 'GBP', source: 'estimated' }
+    const result = scoreOpportunity(oddUnit)
+    expect(result.warnings).not.toContainEqual(expect.stringMatching(/^NON_HOURLY_COST_UNIT: /))
+    expect(row(result, 'Quote request to CRM entry: effective hourly cost').value).toBeCloseTo(20, 10)
     expect(scoreOpportunity(baseInput()).warnings).not.toContainEqual(expect.stringMatching(/^NON_HOURLY_COST_UNIT: /))
   })
 
