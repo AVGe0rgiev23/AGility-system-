@@ -12,7 +12,8 @@ export const EffortInputsSchema = z.object({
     }),
   ),
   dataReadiness: z.enum(['structured', 'semi-structured', 'unstructured']),
-  approvalSteps: z.number(),
+  // A count of steps, each worth effort points: a fraction or a negative has no meaning.
+  approvalSteps: z.int().min(0),
   complianceFlags: z.array(z.string()),
   volumeTier: z.enum(['low', 'medium', 'high']),
   novelty: z.enum(['known-pattern', 'similar-pattern', 'new']),

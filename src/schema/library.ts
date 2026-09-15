@@ -33,8 +33,9 @@ export const CalibrationRecordSchema = z.object({
   samples: z.array(
     z.object({
       engagementId: z.string(),
-      estimatedHours: z.number(),
-      actualHours: z.number(),
+      // Calibration divides actual by estimated hours, so a zero estimate has no ratio.
+      estimatedHours: z.number().positive(),
+      actualHours: z.number().nonnegative(),
       completedAt: z.string(),
     }),
   ),

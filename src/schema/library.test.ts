@@ -78,6 +78,25 @@ describe('CalibrationRecordSchema', () => {
     expect(issuePaths(CalibrationRecordSchema, invalid)).toEqual(['samples.0.actualHours'])
   })
 
+  it('requires a positive estimate on every sample, since the ratio divides by it', () => {
+    const withEstimate = (estimatedHours: number) => ({
+      ...calibrationRecord(),
+      samples: [{ engagementId: 'eng-0', estimatedHours, actualHours: 26, completedAt: '2026-08-30' }],
+    })
+    expect(issuePaths(CalibrationRecordSchema, withEstimate(0))).toEqual(['samples.0.estimatedHours'])
+    expect(issuePaths(CalibrationRecordSchema, withEstimate(-20))).toEqual(['samples.0.estimatedHours'])
+    expect(issuePaths(CalibrationRecordSchema, withEstimate(0.5))).toEqual([])
+  })
+
+  it('requires non-negative actual hours on every sample', () => {
+    const withActual = (actualHours: number) => ({
+      ...calibrationRecord(),
+      samples: [{ engagementId: 'eng-0', estimatedHours: 20, actualHours, completedAt: '2026-08-30' }],
+    })
+    expect(issuePaths(CalibrationRecordSchema, withActual(-1))).toEqual(['samples.0.actualHours'])
+    expect(issuePaths(CalibrationRecordSchema, withActual(0))).toEqual([])
+  })
+
   it('infers the spec types', () => {
     expectTypeOf<CalibrationRecord['samples'][number]>().toEqualTypeOf<{
       engagementId: string

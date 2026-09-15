@@ -162,6 +162,22 @@ export const ConfigSchema = z.object({
     }
   }
 
+  // The estimate reports its band by id, so a shared id would make that band ambiguous. 'custom'
+  // is reserved for the unbounded band: on a priced band it would read as a quote with no price.
+  // Checked only once the unbounded band is settled, since with none a bounded 'custom' band is
+  // already reported above. A misused 'custom' is reported once, not again as a duplicate.
+  const seenIds = new Set<string>()
+  for (const [index, band] of pricing.bands.entries()) {
+    if (unboundedIndexes.length === 1 && band.maxHours !== null && band.id === 'custom') {
+      issue(['pricing', 'bands', index, 'id'], "Only the band with no max hours may have id 'custom'")
+      continue
+    }
+    if (seenIds.has(band.id)) {
+      issue(['pricing', 'bands', index, 'id'], `Band id '${band.id}' is already used by an earlier band`)
+    }
+    seenIds.add(band.id)
+  }
+
   let previousMaxHours: number | null = null
   for (const [index, band] of pricing.bands.entries()) {
     if (band.maxHours === null) continue

@@ -227,6 +227,20 @@ describe('ConfigSchema consistency rules', () => {
     expect(pathsAfter((c) => (band(c, 'custom').id = 'bespoke'))).toEqual(['pricing.bands.2.id'])
   })
 
+  it('band ids must be unique', () => {
+    expect(pathsAfter((c) => (band(c, 'full-workflow').id = 'pilot'))).toEqual(['pricing.bands.1.id'])
+    expect(messagesAfter((c) => (band(c, 'full-workflow').id = 'pilot'))).toEqual([
+      "Band id 'pilot' is already used by an earlier band",
+    ])
+  })
+
+  it("only the band with no max hours may have id 'custom'", () => {
+    expect(pathsAfter((c) => (band(c, 'pilot').id = 'custom'))).toEqual(['pricing.bands.0.id'])
+    expect(messagesAfter((c) => (band(c, 'pilot').id = 'custom'))).toEqual([
+      "Only the band with no max hours may have id 'custom'",
+    ])
+  })
+
   it('the band with no max hours must have no floor and no ceiling', () => {
     const priced = (c: Config) => {
       const custom = band(c, 'custom')
