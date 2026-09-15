@@ -472,6 +472,26 @@ describe('scoreOpportunity output shape', () => {
     }
   })
 
+  it('marks exactly the ranking figures internal and every other row client-facing', () => {
+    const result = scoreOpportunity(baseInput())
+    const internal = result.breakdown.filter((entry) => entry.audience === 'internal').map((entry) => entry.label)
+    expect(internal).toEqual(['Strategic multiplier', 'Value score', 'Effort score', 'Priority index'])
+    expect(result.breakdown.every((entry) => entry.audience === 'client' || internal.includes(entry.label))).toBe(true)
+  })
+
+  it('leaves the weighted value recoverable from no row: the value-score formula names the multiplier instead of printing it', () => {
+    const result = scoreOpportunity(baseInput())
+    // Weighted value 10944 = annual value 8755.2 × direct-impact multiplier 1.25.
+    expect(result.weightedValue).toBeCloseTo(10944, 10)
+    const valueScore = row(result, 'Value score').formula
+    expect(valueScore).toBe('min(100, round(100 × 8755.2 × strategic multiplier / 30000))')
+    for (const entry of result.breakdown.filter((candidate) => candidate.audience === 'client')) {
+      expect(entry.formula, entry.label).not.toContain('10944')
+      expect(entry.formula, entry.label).not.toContain('1.25')
+      expect(entry.label, entry.label).not.toMatch(/weighted|strategic/i)
+    }
+  })
+
   it('stamps computedAt from the injected clock and keeps it out of the hash', () => {
     const a = scoreOpportunity(baseInput())
     const b = scoreOpportunity({ ...baseInput(), now: '2030-01-01T00:00:00.000Z' })

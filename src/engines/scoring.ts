@@ -224,14 +224,17 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     'none',
   )
   const strategicMultiplier = config.scoring.strategicMultipliers[impact]
-  // The factor is shown so the working panel can explain the value score. The weighted value
-  // itself is for ranking only and stays off the breakdown, which proposals render.
+  // The multiplier, the value score, the effort score, the priority index and the quadrant are
+  // ranking figures: internal rows, which documents filter out by audience. The weighted value
+  // stays off the breakdown entirely, and the value-score formula names the multiplier instead
+  // of printing it, so no row pairs it with the client-facing annual value.
   show(
     'Strategic multiplier',
     strategicMultiplier,
     'factor',
     'default',
     `config.scoring.strategicMultipliers.${impact} (highest revenue impact among linked processes)`,
+    'internal',
   )
   const weightedValue = annualValue * strategicMultiplier
   const valueScore = clampScore(Math.round((100 * weightedValue) / config.scoring.valueCeiling))
@@ -240,7 +243,8 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     valueScore,
     'points',
     valueSource,
-    `min(100, round(100 × ${fmt(annualValue)} × ${fmt(strategicMultiplier)} / ${fmt(config.scoring.valueCeiling)}))`,
+    `min(100, round(100 × ${fmt(annualValue)} × strategic multiplier / ${fmt(config.scoring.valueCeiling)}))`,
+    'internal',
   )
 
   // §1.2 Effort. The inputs are Alex's assessment of the build, hence 'estimated'.
@@ -318,6 +322,7 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     'points',
     effortSource,
     `min(100, round(100 × ${fmt(rawBuildHours)} / ${fmt(config.scoring.effortCeiling)}))`,
+    'internal',
   )
 
   // §1.3 Confidence
@@ -354,6 +359,7 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     'index',
     valueSource,
     `(${fmt(valueScore)} × ${fmt(confidence)} / 100) / (0.5 + ${fmt(effortScore)} / 100)`,
+    'internal',
   )
   const highValue = valueScore >= QUADRANT_THRESHOLD
   const highEffort = effortScore >= QUADRANT_THRESHOLD
