@@ -315,7 +315,6 @@ describe('estimateScope output shape', () => {
     const only = input.scored[0]
     if (only === undefined) throw new Error('baseInput has one scored opportunity')
     only.opportunity.title = 'Renamed'
-    only.opportunity.selected = false
     only.scoring.annualValue = 1
     only.scoring.computedAt = '2030-01-01T00:00:00.000Z'
     only.scoring.inputsHash = 'other'

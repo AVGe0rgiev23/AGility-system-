@@ -265,7 +265,6 @@ export function opportunity(): Opportunity {
       requiresHumanInLoop: false,
     },
     scoring: null,
-    selected: true,
   }
 }
 

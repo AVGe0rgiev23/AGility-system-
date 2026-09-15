@@ -64,6 +64,11 @@ describe('OpportunitySchema', () => {
     expect(parsed).not.toHaveProperty('roi')
   })
 
+  it('carries no selected flag, since the scope alone records what is selected', () => {
+    const parsed = OpportunitySchema.parse({ ...opportunity(), selected: true })
+    expect(parsed).not.toHaveProperty('selected')
+  })
+
   it('survives a JSON round trip unchanged', () => {
     const scored = { ...opportunity(), scoring: scoringResult() }
     expect(OpportunitySchema.parse(roundTrip(scored))).toEqual(scored)
