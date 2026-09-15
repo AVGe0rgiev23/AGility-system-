@@ -67,6 +67,54 @@ describe('computeCalibration', () => {
     expect(computeCalibration(samples(1.0, 2.0, 1.4, 1.6)).multiplier).toBeCloseTo(1.5, 12)
   })
 
+  it('computes a worked median from real estimate and actual hours', () => {
+    const worked = [
+      [20, 26], // 1.3
+      [10, 8], // 0.8
+      [40, 60], // 1.5
+      [8, 12], // 1.5
+      [25, 20], // 0.8
+      [16, 20], // 1.25
+    ].map(([estimatedHours = 0, actualHours = 0], index) => ({
+      engagementId: `eng-${index}`,
+      estimatedHours,
+      actualHours,
+      completedAt: '2026-06-01T00:00:00.000Z',
+    }))
+    // Sorted: 0.8, 0.8, 1.25, 1.3, 1.5, 1.5. The middle pair averages to 1.275.
+    const result = computeCalibration(worked)
+    expect(result.multiplier).toBeCloseTo(1.275, 12)
+    expect(result).toMatchObject({ sampleCount: 6, usableSampleCount: 6, trustworthy: true })
+  })
+
+  it('computes a worked median over the ten most recent usable samples', () => {
+    const worked = [
+      [10, 50], // 5.0, evicted
+      [4, 16], // 4.0, evicted
+      [10, 11], // 1.1
+      [20, 18], // 0.9
+      [5, 6], // 1.2
+      [8, 10], // 1.25
+      [0, 9], // no ratio: counted, never windowed
+      [12, 12], // 1.0
+      [30, 45], // 1.5
+      [10, 14], // 1.4
+      [16, 12], // 0.75
+      [20, 26], // 1.3
+      [25, 30], // 1.2
+    ].map(([estimatedHours = 0, actualHours = 0], index) => ({
+      engagementId: `eng-${index}`,
+      estimatedHours,
+      actualHours,
+      completedAt: '2026-06-01T00:00:00.000Z',
+    }))
+    // Window sorted: 0.75, 0.9, 1.0, 1.1, 1.2, 1.2, 1.25, 1.3, 1.4, 1.5. The middle pair is 1.2
+    // and 1.2. Had the two outliers stayed in, the middle pair would be 1.2 and 1.25.
+    const result = computeCalibration(worked)
+    expect(result.multiplier).toBeCloseTo(1.2, 12)
+    expect(result).toMatchObject({ sampleCount: 13, usableSampleCount: 12, trustworthy: true })
+  })
+
   it('uses the median, so one catastrophic project does not distort the multiplier', () => {
     expect(computeCalibration(samples(1.1, 1.0, 1.2, 9.0)).multiplier).toBeCloseTo(1.15, 12)
   })

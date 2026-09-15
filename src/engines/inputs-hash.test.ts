@@ -55,6 +55,17 @@ describe('hashInputs', () => {
     expect(hashInputs([1])).not.toBe(hashInputs({ 0: 1 }))
   })
 
+  it('hashes a fixed input to its pinned golden value', () => {
+    // Every cached result and every document override stores one of these hashes. A change to
+    // cyrb53 or to canonicalJson would make every stored hash look drifted at once, so it must
+    // fail here and ship deliberately, with a migration, rather than slip through unnoticed.
+    const input = { z: [3, 'é', null, true], a: { c: -1.5, b: 'say "hi"', d: undefined }, m: 0 }
+    expect(canonicalJson(input)).toBe('{"a":{"b":"say \\"hi\\"","c":-1.5},"m":0,"z":[3,"é",null,true]}')
+    expect(hashInputs(input)).toBe('00c526952e2f52')
+    expect(hashInputs(null)).toBe('15e0da69fcb93a')
+    expect(hashInputs({})).toBe('1bc27f5a56d1e7')
+  })
+
   it('is deterministic for random plain values', () => {
     const random = mulberry32(11)
     for (let i = 0; i < 200; i++) {

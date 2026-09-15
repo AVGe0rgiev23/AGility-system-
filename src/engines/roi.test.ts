@@ -49,20 +49,6 @@ function expectScenario(actual: ROIResult['scenarios'][keyof ROIResult['scenario
   expect(actual.npv).toBeCloseTo(expected.npv, 6)
 }
 
-function scenarioFor(gross: number, annualRunCost: number, cost: number, rate = 0.08, horizon = 3) {
-  const net = gross - annualRunCost
-  let npv = -cost
-  for (let year = 1; year <= horizon; year++) npv += net / (1 + rate) ** year
-  return {
-    grossAnnualValue: gross,
-    netAnnualBenefit: net,
-    paybackMonths: net <= 0 ? null : cost / (net / 12),
-    roiYear1: (net - cost) / cost,
-    roiYear3: (3 * net - cost) / cost,
-    npv,
-  }
-}
-
 function messageFor(result: ROIResult, code: ROIWarningCode): string {
   const warning = result.warnings.find((candidate) => candidate.code === code)
   if (warning === undefined) throw new Error(`expected a ${code} warning, got ${warningCodes(result).join(', ') || 'none'}`)
@@ -96,12 +82,50 @@ describe('computeROI (§4)', () => {
     expect(result.computedAt).toBe(NOW)
   })
 
-  it('recomputes everything from the scaled gross value in each scenario', () => {
-    const result = computeROI(baseInput())
+  it('recomputes every figure from the scaled gross value in each scenario, worked by hand', () => {
+    // €24,000 gross, a €9,000 price, and €100 a month each for client and agency: €2,400 a year.
+    // A 25% discount rate keeps the discount factors exact: 0.8, 0.64 and 0.512, summing to 1.952.
+    const config = defaultConfig()
+    config.roi.discountRate = 0.25
+    const result = computeROI(
+      baseInput({
+        scored: [scored({ annualValue: 24000 })],
+        estimate: { ...estimateResult(), price: 9000 },
+        runCost: withRunCost(100, 100),
+        config,
+      }),
+    )
     expect(Object.keys(result.scenarios)).toEqual(['conservative', 'expected', 'optimistic'])
-    expectScenario(result.scenarios.conservative, scenarioFor(18240 * 0.6, 60, 2378.545))
-    expectScenario(result.scenarios.expected, scenarioFor(18240, 60, 2378.545))
-    expectScenario(result.scenarios.optimistic, scenarioFor(18240 * 1.25, 60, 2378.545))
+    expect(result.annualRunCost).toBe(2400)
+    // × 0.6: net 12,000 is €1,000 a month. Payback 9,000 / 1,000. Year 1 3,000 / 9,000, year 3
+    // 27,000 / 9,000. NPV −9,000 + 12,000 × 1.952.
+    expectScenario(result.scenarios.conservative, {
+      grossAnnualValue: 14400,
+      netAnnualBenefit: 12000,
+      paybackMonths: 9,
+      roiYear1: 1 / 3,
+      roiYear3: 3,
+      npv: 14424,
+    })
+    // × 1.0: net 21,600 is €1,800 a month. Year 1 12,600 / 9,000, year 3 55,800 / 9,000.
+    expectScenario(result.scenarios.expected, {
+      grossAnnualValue: 24000,
+      netAnnualBenefit: 21600,
+      paybackMonths: 5,
+      roiYear1: 1.4,
+      roiYear3: 6.2,
+      npv: 33163.2,
+    })
+    // × 1.25: net 27,600 is €2,300 a month. Year 1 18,600 / 9,000, year 3 73,800 / 9,000.
+    expectScenario(result.scenarios.optimistic, {
+      grossAnnualValue: 30000,
+      netAnnualBenefit: 27600,
+      paybackMonths: 90 / 23,
+      roiYear1: 31 / 15,
+      roiYear3: 8.2,
+      npv: 44875.2,
+    })
+    expect(result.warnings).toEqual([])
   })
 
   it('reads the scenario factors from Config', () => {
