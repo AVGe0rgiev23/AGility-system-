@@ -9,6 +9,9 @@ import { LOW_CONFIDENCE_THRESHOLD } from './scoring'
 // ENGINES §4: above this share of the gross annual value, the running cost eats the case.
 export const RUN_COST_SHARE_THRESHOLD = 0.3
 
+// §4: conservative leads every client-facing document, so it is the scenario the warnings judge.
+export const ROI_WARNING_SCENARIO: keyof ROIResult['scenarios'] = 'conservative'
+
 export interface ROIInput {
   // The selected set. Clients buy projects, not line items.
   scored: ScoredOpportunity[]
@@ -70,8 +73,6 @@ export function computeROI(input: ROIInput): ROIResult {
 
   const lowestConfidence = scored.length === 0 ? 0 : Math.min(...scored.map(({ scoring }) => scoring.confidence))
 
-  // Evaluated on the expected scenario: §4 defines the warnings on the base formulas, and the
-  // scenarios are the same formulas over a scaled gross value.
   const warnings: ROIResult['warnings'] = []
   const warn = (code: ROIWarningCode, message: string): void => {
     warnings.push({ code, message })
@@ -82,26 +83,29 @@ export function computeROI(input: ROIInput): ROIResult {
   if (implementationCost === 0) {
     warn('NO_IMPLEMENTATION_COST', 'The estimate prices at 0, so payback and the return ratios are not reported')
   }
-  const expected = scenarios.expected
-  // Judged on the net benefit, since a null payback may only mean a zero price.
-  if (expected.netAnnualBenefit <= 0) {
+  // Warnings that depend on a scenario are judged on the one that leads the proposal, and each
+  // says so, since the same case can pass on expected figures and fail on conservative ones.
+  const judged = scenarios[ROI_WARNING_SCENARIO]
+  const judgedOn = `In the ${ROI_WARNING_SCENARIO} scenario`
+  // Keyed on the net benefit, since a null payback may only mean a zero price.
+  if (judged.netAnnualBenefit <= 0) {
     warn(
       'NO_PAYBACK',
-      `The running cost of ${fmt(annualRunCost)} ${currency}/year meets or exceeds the value of ${fmt(grossAnnualValue)} ${currency}/year; stop`,
+      `${judgedOn}, the running cost of ${fmt(annualRunCost)} ${currency}/year meets or exceeds the value of ${fmt(judged.grossAnnualValue)} ${currency}/year; stop`,
     )
-  } else if (expected.paybackMonths !== null && expected.paybackMonths > roi.paybackWarningMonths) {
+  } else if (judged.paybackMonths !== null && judged.paybackMonths > roi.paybackWarningMonths) {
     warn(
       'PAYBACK_TOO_LONG',
-      `Payback of ${fmt(expected.paybackMonths)} months exceeds ${fmt(roi.paybackWarningMonths)}; hard to sell, cut scope`,
+      `${judgedOn}, payback of ${fmt(judged.paybackMonths)} months exceeds ${fmt(roi.paybackWarningMonths)}; hard to sell, cut scope`,
     )
   }
   if (scored.length > 0 && lowestConfidence < LOW_CONFIDENCE_THRESHOLD) {
     warn('LOW_CONFIDENCE', `The lowest opportunity confidence is ${fmt(lowestConfidence)}; the case rests on guesses`)
   }
-  if (annualRunCost > grossAnnualValue * RUN_COST_SHARE_THRESHOLD) {
+  if (annualRunCost > judged.grossAnnualValue * RUN_COST_SHARE_THRESHOLD) {
     warn(
       'RUN_COST_EATS_CASE',
-      `The running cost of ${fmt(annualRunCost)} ${currency}/year is above ${fmt(RUN_COST_SHARE_THRESHOLD * 100)}% of the ${fmt(grossAnnualValue)} ${currency}/year value`,
+      `${judgedOn}, the running cost of ${fmt(annualRunCost)} ${currency}/year is above ${fmt(RUN_COST_SHARE_THRESHOLD * 100)}% of the ${fmt(judged.grossAnnualValue)} ${currency}/year value`,
     )
   }
   // Money is told by its currency alone, which cannot separate an hourly cost from a cost per

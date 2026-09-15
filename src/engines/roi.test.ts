@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { estimateResult, opportunity, roiResult, runCostResult, scoringResult, tracedHours } from '../schema/__fixtures__/records'
 import { defaultConfig } from '../schema/config'
-import type { ROIResult } from '../schema/results'
+import type { ROIResult, ROIWarningCode } from '../schema/results'
 import type { TracedValue } from '../schema/traced'
 import { mulberry32, randomROIInput, warningCodes } from './__fixtures__/engine-fixtures'
 import type { ScoredOpportunity } from './estimate'
-import { computeROI, RUN_COST_SHARE_THRESHOLD, type ROIInput } from './roi'
+import { computeROI, ROI_WARNING_SCENARIO, RUN_COST_SHARE_THRESHOLD, type ROIInput } from './roi'
 
 const NOW = '2026-09-15T10:00:00.000Z'
 
@@ -63,9 +63,16 @@ function scenarioFor(gross: number, annualRunCost: number, cost: number, rate = 
   }
 }
 
+function messageFor(result: ROIResult, code: ROIWarningCode): string {
+  const warning = result.warnings.find((candidate) => candidate.code === code)
+  if (warning === undefined) throw new Error(`expected a ${code} warning, got ${warningCodes(result).join(', ') || 'none'}`)
+  return warning.message
+}
+
 describe('roi constants', () => {
   it('match ENGINES §4', () => {
     expect(RUN_COST_SHARE_THRESHOLD).toBe(0.3)
+    expect(ROI_WARNING_SCENARIO).toBe('conservative')
   })
 })
 
@@ -178,31 +185,51 @@ describe('computeROI (§4)', () => {
 })
 
 describe('computeROI warnings (§4)', () => {
-  it('warns when the expected payback exceeds the configured months, not when it equals them', () => {
-    // €2,378.545 over (net / 12): net of €1,189.2725 gives exactly 24 months.
+  // A conservative factor of 0.5 halves exactly in binary, so the edge cases below land on the
+  // threshold rather than a rounding error either side of it.
+  function halfConservative(): ROIInput['config'] {
     const config = defaultConfig()
+    config.roi.conservativeFactor = 0.5
+    return config
+  }
+
+  it('warns when the conservative payback exceeds the configured months, not when it equals them', () => {
+    const config = halfConservative()
     config.roi.paybackWarningMonths = 24
-    const slow = computeROI(baseInput({ scored: [scored({ annualValue: 1200 })], config }))
-    expect(slow.scenarios.expected.paybackMonths).toBeGreaterThan(24)
-    expect(warningCodes(slow)).toContain('PAYBACK_TOO_LONG')
-    const exact = computeROI(baseInput({ scored: [scored({ annualValue: 1189.2725 + 60 })], config }))
-    expect(exact.scenarios.expected.paybackMonths).toBeCloseTo(24, 8)
+    // Conservative gross €1,200 less €60 run cost is €1,140 a year: €2,378.545 / €95 is 25.04 months.
+    // The expected scenario, at €2,340 a year, pays back in 12.2 and would not warn.
+    const slow = computeROI(baseInput({ scored: [scored({ annualValue: 2400 })], config }))
+    expect(slow.scenarios.conservative.paybackMonths).toBeGreaterThan(24)
+    expect(slow.scenarios.expected.paybackMonths).toBeLessThan(24)
+    expect(messageFor(slow, 'PAYBACK_TOO_LONG')).toContain('conservative')
+    // €2,378.545 over (net / 12): a conservative net of €1,189.2725 gives exactly 24 months.
+    const exact = computeROI(baseInput({ scored: [scored({ annualValue: 2 * (1189.2725 + 60) })], config }))
+    expect(exact.scenarios.conservative.paybackMonths).toBeCloseTo(24, 8)
     expect(warningCodes(exact)).not.toContain('PAYBACK_TOO_LONG')
   })
 
-  it('warns when the lowest confidence is below 50', () => {
+  it('warns NO_PAYBACK when the conservative value does not cover the running cost, even if expected does', () => {
+    // €12,000 a year of running cost against €10,944 conservative and €18,240 expected.
+    const result = computeROI(baseInput({ runCost: withRunCost(1000, 0) }))
+    expect(result.scenarios.conservative.netAnnualBenefit).toBeCloseTo(-1056, 8)
+    expect(result.scenarios.expected.paybackMonths).not.toBeNull()
+    expect(messageFor(result, 'NO_PAYBACK')).toContain('conservative')
+  })
+
+  it('warns when the lowest confidence is below 50, without naming a scenario', () => {
     const result = computeROI(baseInput({ scored: [scored({ id: 'a', confidence: 90 }), scored({ id: 'b', confidence: 49 })] }))
     expect(result.lowestConfidence).toBe(49)
-    expect(warningCodes(result)).toContain('LOW_CONFIDENCE')
+    expect(messageFor(result, 'LOW_CONFIDENCE')).not.toContain('scenario')
     const edge = computeROI(baseInput({ scored: [scored({ confidence: 50 })] }))
     expect(warningCodes(edge)).not.toContain('LOW_CONFIDENCE')
   })
 
-  it('warns when the running cost exceeds 30% of the gross value, not at 30%', () => {
-    // 30% of €18,240 is €5,472/year, or €456/month.
-    const eats = computeROI(baseInput({ runCost: withRunCost(457, 0) }))
-    expect(warningCodes(eats)).toContain('RUN_COST_EATS_CASE')
-    const edge = computeROI(baseInput({ runCost: withRunCost(456, 0) }))
+  it('warns when the running cost exceeds 30% of the conservative gross value, not at 30%', () => {
+    // 30% of the €9,120 conservative value is €2,736/year, or €228/month. Against the €18,240
+    // expected value neither figure would warn.
+    const eats = computeROI(baseInput({ runCost: withRunCost(229, 0), config: halfConservative() }))
+    expect(messageFor(eats, 'RUN_COST_EATS_CASE')).toContain('conservative')
+    const edge = computeROI(baseInput({ runCost: withRunCost(228, 0), config: halfConservative() }))
     expect(warningCodes(edge)).not.toContain('RUN_COST_EATS_CASE')
   })
 
