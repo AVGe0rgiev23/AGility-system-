@@ -29,7 +29,7 @@ export function TracedInput(props: TracedInputProps) {
       props.onChange(next)
     }
   }
-  const { draft, unit, issues, mismatch, setText, setCurrency, setSource, setNote, touch } = useTracedDraft({
+  const { draft, unit, issues, warnings, setText, setCurrency, setSource, setNote, touch } = useTracedDraft({
     value: props.value,
     field,
     required,
@@ -44,7 +44,7 @@ export function TracedInput(props: TracedInputProps) {
   }
 
   return (
-    <Field label={props.label} htmlFor={valueId} hint={props.hint} warnings={mismatch === null ? [] : [mismatch]} issues={issues} required={required}>
+    <Field label={props.label} htmlFor={valueId} hint={props.hint} warnings={warnings} issues={issues} required={required}>
       <div className="flex min-w-0 items-center gap-1.5" onBlur={leaveRow}>
         <input
           id={valueId}

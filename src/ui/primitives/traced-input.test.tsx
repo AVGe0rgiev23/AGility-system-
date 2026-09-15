@@ -67,6 +67,14 @@ describe('TracedInput', () => {
     expect(html).not.toContain('role="alert"')
   })
 
+  it('warns inline about a stored number with three decimals that could be read as thousands, and still shows it', () => {
+    const stored: TracedValue = { value: 1.125, unit: 'minutes', source: 'measured' }
+    const html = renderToStaticMarkup(<TracedInput label="Minutes per occurrence" value={stored} unit="minutes" required onChange={ignore} />)
+    expect(valueBoxText(html)).toBe('1.125')
+    expect(html).toContain('text-warn">Read as 1.125, not 1125. Use 1125 or 1125.00 if the dot was a thousands separator.<')
+    expect(html).toContain('aria-invalid="false"')
+  })
+
   it('warns about a stored unit the field does not record', () => {
     const stored: TracedValue = { value: 2, unit: 'hours', source: 'client-stated' }
     const html = renderToStaticMarkup(<TracedInput label="Minutes per occurrence" value={stored} unit="minutes" required onChange={ignore} />)

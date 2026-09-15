@@ -4,7 +4,9 @@ import { TracedValueSchema, type TracedValue } from '../schema/traced'
 import {
   AMBIGUOUS_NUMBER,
   assembleDraft,
+  dotReadingWarning,
   draftFromValue,
+  draftWarnings,
   editDraft,
   initialDraftState,
   NOT_A_NUMBER,
@@ -61,6 +63,30 @@ describe('parseNumberText, dot form', () => {
   it('reads negative zero as zero', () => {
     expect(Object.is(parsedValue('-0'), 0)).toBe(true)
     expect(Object.is(parsedValue('-0,0'), 0)).toBe(true)
+  })
+})
+
+describe('parseNumberText, a dot before three digits', () => {
+  it('reads it as the decimal point, accepts it, and warns with the thousands reading', () => {
+    expect(parseNumberText('1.200')).toEqual({
+      kind: 'number',
+      value: 1.2,
+      warning: 'Read as 1.2, not 1200. Use 1200 or 1200.00 if the dot was a thousands separator.',
+    })
+    expect(parseNumberText('12.345')).toEqual({ kind: 'number', value: 12.345, warning: dotReadingWarning(12.345, 12345) })
+    expect(parseNumberText('999.999')).toEqual({ kind: 'number', value: 999.999, warning: dotReadingWarning(999.999, 999999) })
+    expect(parseNumberText(' -1.200 ')).toEqual({ kind: 'number', value: -1.2, warning: dotReadingWarning(-1.2, -1200) })
+    expect(parseNumberText('1.125')).toEqual({ kind: 'number', value: 1.125, warning: dotReadingWarning(1.125, 1125) })
+  })
+
+  it('does not warn where the dot cannot be a thousands group', () => {
+    for (const text of ['0.125', '1234.567', '1.2', '1.20', '1.2000', '1200', '.125', '1.5E-7', '1e+21', '1200.50']) {
+      expect(parseNumberText(text), text).toMatchObject({ kind: 'number', warning: null })
+    }
+  })
+
+  it('still refuses a comma before three digits', () => {
+    expect(parseNumberText('1,200')).toEqual({ kind: 'invalid', message: AMBIGUOUS_NUMBER })
   })
 })
 
@@ -236,6 +262,28 @@ describe('unitMismatch', () => {
   })
 })
 
+describe('draftWarnings', () => {
+  it('lists a stored-unit mismatch and a number read one of two ways, and nothing otherwise', () => {
+    const hours: TracedValue = { value: 2, unit: 'hours', source: 'measured' }
+    expect(draftWarnings('2', null, MINUTES)).toEqual([])
+    expect(draftWarnings('1.200', null, MINUTES)).toEqual([dotReadingWarning(1.2, 1200)])
+    expect(draftWarnings('2', hours, MINUTES)).toEqual([unitMismatch(hours, MINUTES)])
+    expect(draftWarnings('1.200', hours, MINUTES)).toEqual([unitMismatch(hours, MINUTES), dotReadingWarning(1.2, 1200)])
+    expect(draftWarnings('abc', null, MINUTES)).toEqual([])
+  })
+
+  it('warns on a stored 1.125 every time its field is opened, exactly as if it were typed', () => {
+    // Deliberate: the warning depends on the text alone, never on whether the field was pre-filled.
+    const stored: TracedValue = { value: 1.125, unit: 'minutes', source: 'measured' }
+    const loaded = draftFromValue(stored, MINUTES).text
+    expect(loaded).toBe('1.125')
+    expect(draftWarnings(loaded, stored, MINUTES)).toEqual(draftWarnings('1.125', null, MINUTES))
+    expect(draftWarnings(loaded, stored, MINUTES)).toEqual([dotReadingWarning(1.125, 1125)])
+    const plain: TracedValue = { value: 1.5, unit: 'minutes', source: 'measured' }
+    expect(draftWarnings(draftFromValue(plain, MINUTES).text, plain, MINUTES)).toEqual([])
+  })
+})
+
 describe('receiveValue and editDraft', () => {
   const stored: TracedValue = { value: 12, unit: 'minutes', source: 'measured' }
 
@@ -248,6 +296,20 @@ describe('receiveValue and editDraft', () => {
     const { state, emit } = editDraft(initialDraftState(stored, MINUTES), { text: '1,200' }, MINUTES, stored, true)
     expect(emit).toBeUndefined()
     expect(state.draft.text).toBe('1,200')
+  })
+
+  it('emits a dot reading that carries a warning: the warning never blocks', () => {
+    const { emit } = editDraft(initialDraftState(stored, MINUTES), { text: '1.200' }, MINUTES, stored, true)
+    expect(emit).toEqual({ value: 1.2, unit: 'minutes', source: 'measured' })
+  })
+
+  it('reads the same keystrokes as the same number whether the field was blank or held a value', () => {
+    const typed = { text: '1.200', source: 'measured' as const }
+    const large: TracedValue = { value: 1200, unit: 'minutes', source: 'measured' }
+    const blank = editDraft(initialDraftState(null, MINUTES), typed, MINUTES, null, true)
+    const prefilled = editDraft(initialDraftState(stored, MINUTES), typed, MINUTES, stored, true)
+    const prefilledLarge = editDraft(initialDraftState(large, MINUTES), typed, MINUTES, large, true)
+    for (const result of [blank, prefilled, prefilledLarge]) expect(result.emit).toEqual({ value: 1.2, unit: 'minutes', source: 'measured' })
   })
 
   it('emits nothing when the edit stands for the value the parent already holds', () => {
@@ -362,7 +424,8 @@ describe('properties', () => {
       if (decimals.length === 3) {
         expect(parsed, text).toEqual({ kind: 'invalid', message: AMBIGUOUS_NUMBER })
       } else {
-        expect(parsed, text).toEqual({ kind: 'number', value: Number(`${whole}.${decimals}`) })
+        // A comma decimal is never a warned reading: its ambiguous form is refused outright.
+        expect(parsed, text).toEqual({ kind: 'number', value: Number(`${whole}.${decimals}`), warning: null })
       }
     }
   })

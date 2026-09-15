@@ -34,12 +34,24 @@ export const NOT_A_NUMBER = 'Not a number: use digits with one decimal separator
 export const VALUE_REQUIRED = 'A value is required'
 export const SOURCE_REQUIRED = 'Choose where this figure comes from'
 
-export type ParsedNumber = { kind: 'empty' } | { kind: 'number'; value: number } | { kind: 'invalid'; message: string }
+// `warning` is set when the text was read one way and could have been meant another. The number
+// is accepted all the same: the warning is shown beside it and never blocks.
+export type ParsedNumber =
+  | { kind: 'empty' }
+  | { kind: 'number'; value: number; warning: string | null }
+  | { kind: 'invalid'; message: string }
 
 // The form String(value) produces for every finite number, so stored values always read back.
 const DOT_FORM = /^-?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i
 const COMMA_FORM = /^-?(\d+,\d*|,\d+)$/
 const SEPARATED_DIGITS = /^-?[\d.,]+$/
+// One to three whole digits, not starting with zero, a dot and exactly three digits: the only shape a
+// German thousands group can take ('1.200', '999.999'). '0.125' and '1234.567' cannot be one.
+const DOT_GROUP_LIKE = /^-?[1-9]\d{0,2}\.\d{3}$/
+
+export function dotReadingWarning(value: number, grouped: number): string {
+  return `Read as ${String(value)}, not ${String(grouped)}. Use ${String(grouped)} or ${String(grouped)}.00 if the dot was a thousands separator.`
+}
 
 export function parseNumberText(text: string): ParsedNumber {
   const trimmed = text.trim()
@@ -60,8 +72,13 @@ export function parseNumberText(text: string): ParsedNumber {
     return { kind: 'invalid', message: NOT_A_NUMBER }
   }
   const value = Number(normalised)
+  // '1.200' is always the decimal 1.2, whether typed into a blank field or over a stored value, so
+  // the same keystrokes always mean the same number. Refusing it would also refuse editing a stored
+  // 1.125, and deciding by context would let the wrong reading slip into a proposal. So it is
+  // accepted and the thousands reading is named beside it, from the text alone.
+  const warning = DOT_GROUP_LIKE.test(trimmed) ? dotReadingWarning(value, Number(trimmed.replace('.', ''))) : null
   // '-0' is zero; a signed zero would survive as a distinct value until JSON silently dropped the sign.
-  return { kind: 'number', value: value === 0 ? 0 : value }
+  return { kind: 'number', value: value === 0 ? 0 : value, warning }
 }
 
 export function unitFor(field: TracedField, currency: Currency | null): string {
@@ -124,6 +141,15 @@ export function unitMismatch(value: TracedValue | null, field: TracedField): str
   const expected = unitFor(field, value.currency ?? null)
   if (value.unit === expected) return null
   return `Stored with unit '${value.unit}', but this field records '${expected}'. The number is used as ${expected}, and the next edit saves that unit.`
+}
+
+// Everything worth seeing about a field that does not stop it saving: a stored unit it does not record,
+// and a number read one of two ways. Both come from what is there now, typed or loaded alike, and show
+// at once, since the value is already in use.
+export function draftWarnings(text: string, value: TracedValue | null, field: TracedField): string[] {
+  const parsed = parseNumberText(text)
+  const reading = parsed.kind === 'number' ? parsed.warning : null
+  return [unitMismatch(value, field), reading].filter((warning): warning is string => warning !== null)
 }
 
 export interface DraftState {
@@ -190,7 +216,7 @@ export function useTracedDraft({ value, field, required, onChange }: TracedDraft
     unit: unitFor(field, state.draft.currency),
     // Shown once the field has been left, so a half-typed number is not an error mid-keystroke.
     issues: state.touched && assembled.kind === 'invalid' ? assembled.issues : [],
-    mismatch: unitMismatch(value, field),
+    warnings: draftWarnings(state.draft.text, value, field),
     setText: (text: string) => edit({ text }),
     setCurrency: (currency: Currency) => edit({ currency }),
     setSource: (source: Source) => edit({ source }),
