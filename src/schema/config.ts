@@ -137,9 +137,10 @@ export const ConfigSchema = z.object({
     }
   }
 
-  // Band placement takes the first band that fits and falls through to the unbounded one,
-  // and ENGINES §2 flags CUSTOM_QUOTE by its id. A renamed or misplaced catch-all band
-  // would silently publish a price where there should be none.
+  // Band placement takes the first band that fits and falls through to the unbounded one, which
+  // ENGINES §2 quotes by hand as CUSTOM_QUOTE. A misplaced catch-all band would swallow scopes a
+  // later priced band should take, and the fixed id lets every result and document name the
+  // manual quote the same way.
   const unboundedIndexes = pricing.bands.flatMap((band, index) => (band.maxHours === null ? [index] : []))
   const [unboundedIndex] = unboundedIndexes
   if (unboundedIndexes.length !== 1 || unboundedIndex === undefined) {
@@ -152,8 +153,8 @@ export const ConfigSchema = z.object({
     if (unbounded?.id !== 'custom') {
       issue(['pricing', 'bands', unboundedIndex, 'id'], "The band with no max hours must have id 'custom'")
     }
-    // A custom quote has no published price; a floor or ceiling here would clamp a price
-    // that the estimate still flags as CUSTOM_QUOTE.
+    // A custom quote has no published price; the estimate never clamps this band, so a floor
+    // or ceiling here would look like a published price that is silently ignored.
     if (unbounded?.floor !== null) {
       issue(['pricing', 'bands', unboundedIndex, 'floor'], 'The band with no max hours must have no floor')
     }

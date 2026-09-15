@@ -62,6 +62,7 @@ describe('EstimateResultSchema', () => {
       'UNDERPRICED',
       'BELOW_FLOOR',
       'CUSTOM_QUOTE',
+      'INVALID_BAND_CONFIG',
       'LOW_CONFIDENCE',
       'UNCALIBRATED_PATTERN',
       'EMPTY_SCOPE',

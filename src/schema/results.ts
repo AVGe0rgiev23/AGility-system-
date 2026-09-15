@@ -39,6 +39,8 @@ export const EstimateFlagSchema = z.enum([
   'UNDERPRICED',
   'BELOW_FLOOR',
   'CUSTOM_QUOTE',
+  // A bounded band without a floor or ceiling reached the estimate: invalid Config escaped validation.
+  'INVALID_BAND_CONFIG',
   'LOW_CONFIDENCE',
   'UNCALIBRATED_PATTERN',
   'EMPTY_SCOPE',

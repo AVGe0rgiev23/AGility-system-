@@ -15,6 +15,9 @@ import { estimateScope, type EstimateInput, type ScoredOpportunity } from './est
 
 const NOW = '2026-09-15T10:00:00.000Z'
 
+// The flags that describe band placement, as opposed to confidence and calibration.
+const BAND_FLAGS: readonly EstimateFlag[] = ['UNDERPRICED', 'BELOW_FLOOR', 'CUSTOM_QUOTE', 'INVALID_BAND_CONFIG']
+
 // The schema fixture: 21.5 raw hours at confidence 82, primary pattern 'pat-email-triage'.
 function scored(overrides: { id?: string; rawBuildHours?: number; confidence?: number; primaryPatternId?: string | null } = {}): ScoredOpportunity {
   return {
@@ -174,6 +177,34 @@ describe('estimateScope band placement and price (§2)', () => {
     expect(result.price).toBe(result.indicativePrice)
     expect(result.effectiveHourlyRate).toBeCloseTo(65, 10)
     expect(result.flags).toEqual(['CUSTOM_QUOTE'])
+  })
+
+  it('keys CUSTOM_QUOTE on the unbounded band, not on the band id', () => {
+    const renamed = flatConfig()
+    renamed.pricing.bands = renamed.pricing.bands.map((band) => (band.maxHours === null ? { ...band, id: 'bespoke' } : band))
+    const unbounded = estimateScope(baseInput({ scored: [scored({ rawBuildHours: 100 })], config: renamed, calibration: calibrated }))
+    expect(unbounded.bandId).toBe('bespoke')
+    expect(unbounded.price).toBe(unbounded.indicativePrice)
+    expect(unbounded.flags).toEqual(['CUSTOM_QUOTE'])
+
+    const misnamed = flatConfig()
+    misnamed.pricing.bands = misnamed.pricing.bands.map((band) => (band.id === 'pilot' ? { ...band, id: 'custom' } : band))
+    const bounded = estimateScope(baseInput({ scored: [scored({ rawBuildHours: 14 })], config: misnamed }))
+    expect(bounded.bandId).toBe('custom')
+    expect(bounded.price).toBe(900)
+    expect(bounded.flags).toEqual(['UNDERPRICED', 'UNCALIBRATED_PATTERN'])
+  })
+
+  it('flags a bounded band missing a floor or ceiling as INVALID_BAND_CONFIG and prices it unclamped, without throwing', () => {
+    for (const limit of ['floor', 'ceiling'] as const) {
+      const config = flatConfig()
+      config.pricing.bands = config.pricing.bands.map((band) => (band.id === 'pilot' ? { ...band, [limit]: null } : band))
+      const result = estimateScope(baseInput({ scored: [scored({ rawBuildHours: 14 })], config }))
+      expect(result.bandId, limit).toBe('pilot')
+      expect(result.indicativePrice, limit).toBeCloseTo(910, 10)
+      expect(result.price, limit).toBe(result.indicativePrice)
+      expect(result.flags, limit).toEqual(['INVALID_BAND_CONFIG', 'UNCALIBRATED_PATTERN'])
+    }
   })
 
   it('reads the target hourly rate from Config', () => {
@@ -339,18 +370,36 @@ describe('estimateScope invariants', () => {
     }
   })
 
-  it('price stays within the band floor and ceiling when both are set', () => {
+  it('prices a bounded band within its limits and quotes the unbounded band as CUSTOM_QUOTE alone', () => {
     const random = mulberry32(44)
+    const reached = { empty: 0, bounded: 0, unbounded: 0 }
     for (let i = 0; i < CASES; i++) {
       const input = randomInput(random)
       const result = estimateScope(input)
+      const bandFlags = result.flags.filter((flag) => BAND_FLAGS.includes(flag))
       const band = input.config.pricing.bands.find((candidate) => candidate.id === result.bandId)
-      if (band === undefined || band.floor === null || band.ceiling === null) continue
-      expect(result.price, `case ${i}`).toBeGreaterThanOrEqual(band.floor)
-      expect(result.price, `case ${i}`).toBeLessThanOrEqual(band.ceiling)
-      expect(result.flags.includes('UNDERPRICED'), `case ${i}`).toBe(result.indicativePrice > band.ceiling)
-      expect(result.flags.includes('BELOW_FLOOR'), `case ${i}`).toBe(result.indicativePrice < band.floor)
+      if (band === undefined) {
+        reached.empty++
+        expect(result.bandId, `case ${i}`).toBeNull()
+        expect(bandFlags, `case ${i}`).toEqual([])
+      } else if (band.maxHours === null) {
+        reached.unbounded++
+        expect(bandFlags, `case ${i}`).toEqual(['CUSTOM_QUOTE'])
+        expect(result.price, `case ${i}`).toBe(result.indicativePrice)
+      } else {
+        reached.bounded++
+        if (band.floor === null || band.ceiling === null) throw new Error('the seed Config prices every bounded band')
+        expect(result.price, `case ${i}`).toBeGreaterThanOrEqual(band.floor)
+        expect(result.price, `case ${i}`).toBeLessThanOrEqual(band.ceiling)
+        expect(bandFlags.includes('UNDERPRICED'), `case ${i}`).toBe(result.indicativePrice > band.ceiling)
+        expect(bandFlags.includes('BELOW_FLOOR'), `case ${i}`).toBe(result.indicativePrice < band.floor)
+        expect(bandFlags, `case ${i}`).not.toContain('CUSTOM_QUOTE')
+      }
     }
+    // Each branch must actually be exercised, or the property says nothing about it.
+    expect(reached.empty).toBeGreaterThan(0)
+    expect(reached.bounded).toBeGreaterThan(0)
+    expect(reached.unbounded).toBeGreaterThan(0)
   })
 
   it('a zero-hour scope always prices at 0 with no band, no rate and EMPTY_SCOPE', () => {
@@ -363,7 +412,7 @@ describe('estimateScope invariants', () => {
       expect(result.totalHours, `case ${i}`).toBe(0)
       expect(result, `case ${i}`).toMatchObject({ price: 0, indicativePrice: 0, bandId: null, effectiveHourlyRate: null })
       expect(result.flags[0], `case ${i}`).toBe('EMPTY_SCOPE')
-      expect(result.flags.filter((flag) => ['UNDERPRICED', 'BELOW_FLOOR', 'CUSTOM_QUOTE'].includes(flag)), `case ${i}`).toEqual([])
+      expect(result.flags.filter((flag) => BAND_FLAGS.includes(flag)), `case ${i}`).toEqual([])
     }
   })
 
