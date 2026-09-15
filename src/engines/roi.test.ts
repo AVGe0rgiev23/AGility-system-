@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { estimateResult, opportunity, roiResult, runCostResult, scoringResult, tracedHours } from '../schema/__fixtures__/records'
 import { defaultConfig } from '../schema/config'
-import type { ROIResult } from '../schema/results'
+import type { ROIResult, ROIWarningCode } from '../schema/results'
 import type { TracedValue } from '../schema/traced'
-import { mulberry32, randomROIInput } from './__fixtures__/engine-fixtures'
+import { mulberry32, randomROIInput, warningCodes } from './__fixtures__/engine-fixtures'
 import type { ScoredOpportunity } from './estimate'
-import { computeROI, RUN_COST_SHARE_THRESHOLD, type ROIInput } from './roi'
+import { computeROI, ROI_WARNING_SCENARIO, RUN_COST_SHARE_THRESHOLD, type ROIInput } from './roi'
 
 const NOW = '2026-09-15T10:00:00.000Z'
 
@@ -41,30 +41,24 @@ function withRunCost(clientMonthly: number, agencyMonthly: number): ROIInput['ru
 function expectScenario(actual: ROIResult['scenarios'][keyof ROIResult['scenarios']], expected: typeof actual): void {
   expect(actual.grossAnnualValue).toBeCloseTo(expected.grossAnnualValue, 6)
   expect(actual.netAnnualBenefit).toBeCloseTo(expected.netAnnualBenefit, 6)
-  if (expected.paybackMonths === null) expect(actual.paybackMonths).toBeNull()
-  else expect(actual.paybackMonths).toBeCloseTo(expected.paybackMonths, 6)
-  expect(actual.roiYear1).toBeCloseTo(expected.roiYear1, 6)
-  expect(actual.roiYear3).toBeCloseTo(expected.roiYear3, 6)
+  for (const key of ['paybackMonths', 'roiYear1', 'roiYear3'] as const) {
+    const value = expected[key]
+    if (value === null) expect(actual[key], key).toBeNull()
+    else expect(actual[key], key).toBeCloseTo(value, 6)
+  }
   expect(actual.npv).toBeCloseTo(expected.npv, 6)
 }
 
-function scenarioFor(gross: number, annualRunCost: number, cost: number, rate = 0.08, horizon = 3) {
-  const net = gross - annualRunCost
-  let npv = -cost
-  for (let year = 1; year <= horizon; year++) npv += net / (1 + rate) ** year
-  return {
-    grossAnnualValue: gross,
-    netAnnualBenefit: net,
-    paybackMonths: net <= 0 ? null : cost / (net / 12),
-    roiYear1: (net - cost) / cost,
-    roiYear3: (3 * net - cost) / cost,
-    npv,
-  }
+function messageFor(result: ROIResult, code: ROIWarningCode): string {
+  const warning = result.warnings.find((candidate) => candidate.code === code)
+  if (warning === undefined) throw new Error(`expected a ${code} warning, got ${warningCodes(result).join(', ') || 'none'}`)
+  return warning.message
 }
 
 describe('roi constants', () => {
   it('match ENGINES §4', () => {
     expect(RUN_COST_SHARE_THRESHOLD).toBe(0.3)
+    expect(ROI_WARNING_SCENARIO).toBe('conservative')
   })
 })
 
@@ -75,8 +69,8 @@ describe('computeROI (§4)', () => {
     expect(result.scenarios.expected.grossAnnualValue).toBe(18240)
     expect(result.scenarios.expected.netAnnualBenefit).toBe(18180)
     expect(result.scenarios.expected.paybackMonths).toBeCloseTo(fixture.scenarios.expected.paybackMonths ?? NaN, 2)
-    expect(result.scenarios.expected.roiYear1).toBeCloseTo(fixture.scenarios.expected.roiYear1, 2)
-    expect(result.scenarios.expected.roiYear3).toBeCloseTo(fixture.scenarios.expected.roiYear3, 2)
+    expect(result.scenarios.expected.roiYear1).toBeCloseTo(fixture.scenarios.expected.roiYear1 ?? NaN, 2)
+    expect(result.scenarios.expected.roiYear3).toBeCloseTo(fixture.scenarios.expected.roiYear3 ?? NaN, 2)
     expect(result.scenarios.expected.npv).toBeCloseTo(fixture.scenarios.expected.npv, 0)
     expect(result.hoursSavedPerMonth).toBeCloseTo(33.6, 10)
     expect(result.hoursSavedPerYear).toBeCloseTo(403.2, 10)
@@ -88,12 +82,50 @@ describe('computeROI (§4)', () => {
     expect(result.computedAt).toBe(NOW)
   })
 
-  it('recomputes everything from the scaled gross value in each scenario', () => {
-    const result = computeROI(baseInput())
+  it('recomputes every figure from the scaled gross value in each scenario, worked by hand', () => {
+    // €24,000 gross, a €9,000 price, and €100 a month each for client and agency: €2,400 a year.
+    // A 25% discount rate keeps the discount factors exact: 0.8, 0.64 and 0.512, summing to 1.952.
+    const config = defaultConfig()
+    config.roi.discountRate = 0.25
+    const result = computeROI(
+      baseInput({
+        scored: [scored({ annualValue: 24000 })],
+        estimate: { ...estimateResult(), price: 9000 },
+        runCost: withRunCost(100, 100),
+        config,
+      }),
+    )
     expect(Object.keys(result.scenarios)).toEqual(['conservative', 'expected', 'optimistic'])
-    expectScenario(result.scenarios.conservative, scenarioFor(18240 * 0.6, 60, 2378.545))
-    expectScenario(result.scenarios.expected, scenarioFor(18240, 60, 2378.545))
-    expectScenario(result.scenarios.optimistic, scenarioFor(18240 * 1.25, 60, 2378.545))
+    expect(result.annualRunCost).toBe(2400)
+    // × 0.6: net 12,000 is €1,000 a month. Payback 9,000 / 1,000. Year 1 3,000 / 9,000, year 3
+    // 27,000 / 9,000. NPV −9,000 + 12,000 × 1.952.
+    expectScenario(result.scenarios.conservative, {
+      grossAnnualValue: 14400,
+      netAnnualBenefit: 12000,
+      paybackMonths: 9,
+      roiYear1: 1 / 3,
+      roiYear3: 3,
+      npv: 14424,
+    })
+    // × 1.0: net 21,600 is €1,800 a month. Year 1 12,600 / 9,000, year 3 55,800 / 9,000.
+    expectScenario(result.scenarios.expected, {
+      grossAnnualValue: 24000,
+      netAnnualBenefit: 21600,
+      paybackMonths: 5,
+      roiYear1: 1.4,
+      roiYear3: 6.2,
+      npv: 33163.2,
+    })
+    // × 1.25: net 27,600 is €2,300 a month. Year 1 18,600 / 9,000, year 3 73,800 / 9,000.
+    expectScenario(result.scenarios.optimistic, {
+      grossAnnualValue: 30000,
+      netAnnualBenefit: 27600,
+      paybackMonths: 90 / 23,
+      roiYear1: 31 / 15,
+      roiYear3: 8.2,
+      npv: 44875.2,
+    })
+    expect(result.warnings).toEqual([])
   })
 
   it('reads the scenario factors from Config', () => {
@@ -140,20 +172,22 @@ describe('computeROI (§4)', () => {
     const exceeds = computeROI(baseInput({ runCost: withRunCost(2000, 0) }))
     expect(exceeds.scenarios.expected.paybackMonths).toBeNull()
     expect(exceeds.scenarios.expected.netAnnualBenefit).toBe(18240 - 24000)
-    expect(exceeds.warnings).toContainEqual(expect.stringMatching(/^NO_PAYBACK: /))
+    expect(warningCodes(exceeds)).toContain('NO_PAYBACK')
     const equals = computeROI(baseInput({ runCost: withRunCost(1520, 0) }))
     expect(equals.scenarios.expected.paybackMonths).toBeNull()
   })
 
-  it('returns 0 ROI with a warning when there is no implementation cost to divide by', () => {
+  it('reports no payback and no return ratios, with a warning, when the estimate prices at 0', () => {
     const result = computeROI(baseInput({ estimate: { ...estimateResult(), price: 0 } }))
-    for (const scenario of Object.values(result.scenarios)) {
-      expect(scenario.roiYear1).toBe(0)
-      expect(scenario.roiYear3).toBe(0)
-      expect(scenario.paybackMonths).toBe(0)
-      expect(Number.isFinite(scenario.npv)).toBe(true)
+    for (const [name, scenario] of Object.entries(result.scenarios)) {
+      expect(scenario.paybackMonths, name).toBeNull()
+      expect(scenario.roiYear1, name).toBeNull()
+      expect(scenario.roiYear3, name).toBeNull()
+      expect(Number.isFinite(scenario.npv), name).toBe(true)
     }
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^NO_IMPLEMENTATION_COST: /))
+    expect(warningCodes(result)).toContain('NO_IMPLEMENTATION_COST')
+    // The value still covers the running cost, so a null payback here is not NO_PAYBACK.
+    expect(warningCodes(result)).not.toContain('NO_PAYBACK')
   })
 
   it('reports the empty scope rather than a low-confidence case', () => {
@@ -161,8 +195,8 @@ describe('computeROI (§4)', () => {
     expect(result.scenarios.expected.grossAnnualValue).toBe(0)
     expect(result.lowestConfidence).toBe(0)
     expect(result.assumptions).toEqual([])
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^EMPTY_SCOPE: /))
-    expect(result.warnings).not.toContainEqual(expect.stringMatching(/^LOW_CONFIDENCE: /))
+    expect(warningCodes(result)).toContain('EMPTY_SCOPE')
+    expect(warningCodes(result)).not.toContain('LOW_CONFIDENCE')
   })
 
   it('lists each distinct assumption once across the selected set', () => {
@@ -175,44 +209,68 @@ describe('computeROI (§4)', () => {
 })
 
 describe('computeROI warnings (§4)', () => {
-  it('warns when the expected payback exceeds the configured months, not when it equals them', () => {
-    // €2,378.545 over (net / 12): net of €1,189.2725 gives exactly 24 months.
+  // A conservative factor of 0.5 halves exactly in binary, so the edge cases below land on the
+  // threshold rather than a rounding error either side of it.
+  function halfConservative(): ROIInput['config'] {
     const config = defaultConfig()
+    config.roi.conservativeFactor = 0.5
+    return config
+  }
+
+  it('warns when the conservative payback exceeds the configured months, not when it equals them', () => {
+    const config = halfConservative()
     config.roi.paybackWarningMonths = 24
-    const slow = computeROI(baseInput({ scored: [scored({ annualValue: 1200 })], config }))
-    expect(slow.scenarios.expected.paybackMonths).toBeGreaterThan(24)
-    expect(slow.warnings).toContainEqual(expect.stringMatching(/^PAYBACK_TOO_LONG: /))
-    const exact = computeROI(baseInput({ scored: [scored({ annualValue: 1189.2725 + 60 })], config }))
-    expect(exact.scenarios.expected.paybackMonths).toBeCloseTo(24, 8)
-    expect(exact.warnings).not.toContainEqual(expect.stringMatching(/^PAYBACK_TOO_LONG: /))
+    // Conservative gross €1,200 less €60 run cost is €1,140 a year: €2,378.545 / €95 is 25.04 months.
+    // The expected scenario, at €2,340 a year, pays back in 12.2 and would not warn.
+    const slow = computeROI(baseInput({ scored: [scored({ annualValue: 2400 })], config }))
+    expect(slow.scenarios.conservative.paybackMonths).toBeGreaterThan(24)
+    expect(slow.scenarios.expected.paybackMonths).toBeLessThan(24)
+    expect(messageFor(slow, 'PAYBACK_TOO_LONG')).toContain('conservative')
+    // €2,378.545 over (net / 12): a conservative net of €1,189.2725 gives exactly 24 months.
+    const exact = computeROI(baseInput({ scored: [scored({ annualValue: 2 * (1189.2725 + 60) })], config }))
+    expect(exact.scenarios.conservative.paybackMonths).toBeCloseTo(24, 8)
+    expect(warningCodes(exact)).not.toContain('PAYBACK_TOO_LONG')
   })
 
-  it('warns when the lowest confidence is below 50', () => {
+  it('warns NO_PAYBACK when the conservative value does not cover the running cost, even if expected does', () => {
+    // €12,000 a year of running cost against €10,944 conservative and €18,240 expected.
+    const result = computeROI(baseInput({ runCost: withRunCost(1000, 0) }))
+    expect(result.scenarios.conservative.netAnnualBenefit).toBeCloseTo(-1056, 8)
+    expect(result.scenarios.expected.paybackMonths).not.toBeNull()
+    expect(messageFor(result, 'NO_PAYBACK')).toContain('conservative')
+  })
+
+  it('warns when the lowest confidence is below 50, without naming a scenario', () => {
     const result = computeROI(baseInput({ scored: [scored({ id: 'a', confidence: 90 }), scored({ id: 'b', confidence: 49 })] }))
     expect(result.lowestConfidence).toBe(49)
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^LOW_CONFIDENCE: /))
+    expect(messageFor(result, 'LOW_CONFIDENCE')).not.toContain('scenario')
     const edge = computeROI(baseInput({ scored: [scored({ confidence: 50 })] }))
-    expect(edge.warnings).not.toContainEqual(expect.stringMatching(/^LOW_CONFIDENCE: /))
+    expect(warningCodes(edge)).not.toContain('LOW_CONFIDENCE')
   })
 
-  it('warns when the running cost exceeds 30% of the gross value, not at 30%', () => {
-    // 30% of €18,240 is €5,472/year, or €456/month.
-    const eats = computeROI(baseInput({ runCost: withRunCost(457, 0) }))
-    expect(eats.warnings).toContainEqual(expect.stringMatching(/^RUN_COST_EATS_CASE: /))
-    const edge = computeROI(baseInput({ runCost: withRunCost(456, 0) }))
-    expect(edge.warnings).not.toContainEqual(expect.stringMatching(/^RUN_COST_EATS_CASE: /))
+  it('warns when the running cost exceeds 30% of the conservative gross value, not at 30%', () => {
+    // 30% of the €9,120 conservative value is €2,736/year, or €228/month. Against the €18,240
+    // expected value neither figure would warn.
+    const eats = computeROI(baseInput({ runCost: withRunCost(229, 0), config: halfConservative() }))
+    expect(messageFor(eats, 'RUN_COST_EATS_CASE')).toContain('conservative')
+    const edge = computeROI(baseInput({ runCost: withRunCost(228, 0), config: halfConservative() }))
+    expect(warningCodes(edge)).not.toContain('RUN_COST_EATS_CASE')
   })
 
-  it('warns when any hourly cost among the assumptions is a default', () => {
-    const madeUp: TracedValue = { value: 20, unit: 'EUR/hour', currency: 'EUR', source: 'default' }
-    const result = computeROI(baseInput({ scored: [scored({ assumptions: [tracedHours(), madeUp] })] }))
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^DEFAULT_HOURLY_COST: /))
-    const estimated: TracedValue = { ...madeUp, source: 'estimated' }
+  it('warns when any money figure among the assumptions is a default, telling money by its currency', () => {
+    const hourly: TracedValue = { value: 20, unit: 'EUR/hour', currency: 'EUR', source: 'default' }
+    const perError: TracedValue = { value: 40, unit: 'per error', currency: 'GBP', source: 'default' }
+    for (const madeUp of [hourly, perError]) {
+      const result = computeROI(baseInput({ scored: [scored({ assumptions: [tracedHours(), madeUp] })] }))
+      expect(warningCodes(result), madeUp.unit).toContain('DEFAULT_COST')
+    }
+    const estimated: TracedValue = { ...hourly, source: 'estimated' }
     const fine = computeROI(baseInput({ scored: [scored({ assumptions: [estimated] })] }))
-    expect(fine.warnings).not.toContainEqual(expect.stringMatching(/^DEFAULT_HOURLY_COST: /))
-    const otherDefault: TracedValue = { value: 80, unit: 'percent', source: 'default' }
-    const notHourly = computeROI(baseInput({ scored: [scored({ assumptions: [otherDefault] })] }))
-    expect(notHourly.warnings).not.toContainEqual(expect.stringMatching(/^DEFAULT_HOURLY_COST: /))
+    expect(warningCodes(fine)).not.toContain('DEFAULT_COST')
+    // No currency means not money, whatever the unit says.
+    const notMoney: TracedValue = { value: 80, unit: 'EUR-ish percent', source: 'default' }
+    const result = computeROI(baseInput({ scored: [scored({ assumptions: [notMoney] })] }))
+    expect(warningCodes(result)).not.toContain('DEFAULT_COST')
   })
 })
 
@@ -249,7 +307,7 @@ describe('computeROI output shape', () => {
     input.estimate.indicativePrice = 1
     input.estimate.computedAt = '2030-01-01T00:00:00.000Z'
     input.runCost.computedAt = '2030-01-01T00:00:00.000Z'
-    input.runCost.warnings = ['ignored']
+    input.runCost.warnings = [{ code: 'RETAINER_NOT_SET', message: 'ignored' }]
     input.config.pricing.targetHourlyRate = 90
     input.config.storage.lastSyncAt = NOW
     expect(computeROI(input).inputsHash).toBe(base)
@@ -270,23 +328,35 @@ describe('computeROI invariants', () => {
     const random = mulberry32(61)
     for (let i = 0; i < CASES; i++) {
       const { conservative, expected, optimistic } = computeROI(randomROIInput(random)).scenarios
-      for (const key of ['grossAnnualValue', 'netAnnualBenefit', 'roiYear1', 'roiYear3', 'npv'] as const) {
+      for (const key of ['grossAnnualValue', 'netAnnualBenefit', 'npv'] as const) {
         expect(conservative[key], `case ${i} ${key}`).toBeLessThanOrEqual(expected[key] + 1e-9)
         expect(expected[key], `case ${i} ${key}`).toBeLessThanOrEqual(optimistic[key] + 1e-9)
+      }
+      for (const key of ['roiYear1', 'roiYear3'] as const) {
+        const [low, middle, high] = [conservative[key], expected[key], optimistic[key]]
+        if (low === null || middle === null || high === null) {
+          expect([low, middle, high], `case ${i} ${key}`).toEqual([null, null, null])
+        } else {
+          expect(low, `case ${i} ${key}`).toBeLessThanOrEqual(middle + 1e-9)
+          expect(middle, `case ${i} ${key}`).toBeLessThanOrEqual(high + 1e-9)
+        }
       }
     }
   })
 
-  it('has a payback exactly when the net benefit is positive', () => {
+  it('has a payback exactly when both the net benefit and the price are positive, and ratios exactly when priced', () => {
     const random = mulberry32(62)
     for (let i = 0; i < CASES; i++) {
       const result = computeROI(randomROIInput(random))
+      const priced = result.implementationCost > 0
       for (const scenario of Object.values(result.scenarios)) {
-        if (scenario.netAnnualBenefit <= 0) expect(scenario.paybackMonths, `case ${i}`).toBeNull()
+        if (scenario.netAnnualBenefit <= 0 || !priced) expect(scenario.paybackMonths, `case ${i}`).toBeNull()
         else {
           expect(scenario.paybackMonths, `case ${i}`).not.toBeNull()
           expect(scenario.paybackMonths ?? -1, `case ${i}`).toBeGreaterThanOrEqual(0)
         }
+        expect(scenario.roiYear1 === null, `case ${i}`).toBe(!priced)
+        expect(scenario.roiYear3 === null, `case ${i}`).toBe(!priced)
       }
     }
   })
@@ -318,10 +388,11 @@ describe('computeROI invariants', () => {
       const twice = computeROI(scaled).scenarios
       for (const key of ['conservative', 'expected', 'optimistic'] as const) {
         expect(twice[key].npv, `case ${i} ${key}`).toBeCloseTo(2 * base[key].npv, 6)
-        expect(twice[key].roiYear1, `case ${i} ${key}`).toBeCloseTo(base[key].roiYear1, 6)
-        expect(twice[key].roiYear3, `case ${i} ${key}`).toBeCloseTo(base[key].roiYear3, 6)
-        if (base[key].paybackMonths === null) expect(twice[key].paybackMonths, `case ${i} ${key}`).toBeNull()
-        else expect(twice[key].paybackMonths, `case ${i} ${key}`).toBeCloseTo(base[key].paybackMonths, 6)
+        for (const ratio of ['roiYear1', 'roiYear3', 'paybackMonths'] as const) {
+          const before = base[key][ratio]
+          if (before === null) expect(twice[key][ratio], `case ${i} ${key} ${ratio}`).toBeNull()
+          else expect(twice[key][ratio], `case ${i} ${key} ${ratio}`).toBeCloseTo(before, 6)
+        }
       }
     }
   })

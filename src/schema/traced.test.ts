@@ -72,6 +72,12 @@ describe('TracedValueSchema', () => {
     expect(issuePaths(TracedValueSchema, { ...tracedHours(), source: 'guessed' })).toEqual(['source'])
   })
 
+  it('rejects a negative value', () => {
+    expect(issuePaths(TracedValueSchema, { ...tracedHours(), value: -1 })).toEqual(['value'])
+    expect(issuePaths(TracedValueSchema, { ...tracedMoney(), value: -0.01 })).toEqual(['value'])
+    expect(issuePaths(TracedValueSchema, { ...tracedHours(), value: 0 })).toEqual([])
+  })
+
   it('rejects non-finite numbers, which JSON cannot carry', () => {
     expect(issuePaths(TracedValueSchema, { ...tracedHours(), value: Infinity })).toEqual(['value'])
     expect(issuePaths(TracedValueSchema, { ...tracedHours(), value: NaN })).toEqual(['value'])

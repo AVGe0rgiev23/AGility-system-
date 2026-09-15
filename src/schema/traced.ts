@@ -16,7 +16,9 @@ export function moneyUnitCurrency(unit: string): Currency | null {
 
 export const TracedValueSchema = z
   .object({
-    value: z.number(),
+    // Every traced figure is a count, duration, share or cost. A negative one would run a
+    // value or an effort calculation backwards without any warning.
+    value: z.number().nonnegative(),
     unit: z.string(),
     currency: CurrencySchema.optional(),
     source: SourceSchema,

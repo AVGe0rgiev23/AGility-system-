@@ -137,9 +137,10 @@ export const ConfigSchema = z.object({
     }
   }
 
-  // Band placement takes the first band that fits and falls through to the unbounded one,
-  // and ENGINES §2 flags CUSTOM_QUOTE by its id. A renamed or misplaced catch-all band
-  // would silently publish a price where there should be none.
+  // Band placement takes the first band that fits and falls through to the unbounded one, which
+  // ENGINES §2 quotes by hand as CUSTOM_QUOTE. A misplaced catch-all band would swallow scopes a
+  // later priced band should take, and the fixed id lets every result and document name the
+  // manual quote the same way.
   const unboundedIndexes = pricing.bands.flatMap((band, index) => (band.maxHours === null ? [index] : []))
   const [unboundedIndex] = unboundedIndexes
   if (unboundedIndexes.length !== 1 || unboundedIndex === undefined) {
@@ -152,14 +153,30 @@ export const ConfigSchema = z.object({
     if (unbounded?.id !== 'custom') {
       issue(['pricing', 'bands', unboundedIndex, 'id'], "The band with no max hours must have id 'custom'")
     }
-    // A custom quote has no published price; a floor or ceiling here would clamp a price
-    // that the estimate still flags as CUSTOM_QUOTE.
+    // A custom quote has no published price; the estimate never clamps this band, so a floor
+    // or ceiling here would look like a published price that is silently ignored.
     if (unbounded?.floor !== null) {
       issue(['pricing', 'bands', unboundedIndex, 'floor'], 'The band with no max hours must have no floor')
     }
     if (unbounded?.ceiling !== null) {
       issue(['pricing', 'bands', unboundedIndex, 'ceiling'], 'The band with no max hours must have no ceiling')
     }
+  }
+
+  // The estimate reports its band by id, so a shared id would make that band ambiguous. 'custom'
+  // is reserved for the unbounded band: on a priced band it would read as a quote with no price.
+  // Checked only once the unbounded band is settled, since with none a bounded 'custom' band is
+  // already reported above. A misused 'custom' is reported once, not again as a duplicate.
+  const seenIds = new Set<string>()
+  for (const [index, band] of pricing.bands.entries()) {
+    if (unboundedIndexes.length === 1 && band.maxHours !== null && band.id === 'custom') {
+      issue(['pricing', 'bands', index, 'id'], "Only the band with no max hours may have id 'custom'")
+      continue
+    }
+    if (seenIds.has(band.id)) {
+      issue(['pricing', 'bands', index, 'id'], `Band id '${band.id}' is already used by an earlier band`)
+    }
+    seenIds.add(band.id)
   }
 
   let previousMaxHours: number | null = null

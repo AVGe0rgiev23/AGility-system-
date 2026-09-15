@@ -3,8 +3,8 @@ import type { Config } from '../schema/config'
 import type { Pattern } from '../schema/library'
 import type { Opportunity } from '../schema/opportunity'
 import type { Process } from '../schema/process'
-import type { ScoringResult } from '../schema/results'
-import { moneyUnitCurrency, type Source, type TracedValue } from '../schema/traced'
+import type { ScoringResult, ScoringWarningCode } from '../schema/results'
+import type { Source, TracedValue } from '../schema/traced'
 import { fmt } from './format'
 import { hashInputs } from './inputs-hash'
 
@@ -65,19 +65,12 @@ function worstSource(sources: readonly Source[]): Source {
   return worst
 }
 
-// Money inputs carry their own currency; fxRates holds units per 1 EUR. A value without a
-// currency is not a money unit (the schema enforces that), so it is used as is.
+// A value is money exactly when it carries a currency; its unit is display text and is never
+// parsed. fxRates holds units per 1 EUR. A value without a currency is used as is.
 export function toAgencyCurrency(traced: TracedValue, config: Config): number {
   const currency = traced.currency ?? config.agencyCurrency
   if (currency === config.agencyCurrency) return traced.value
   return traced.value / config.fxRates.rates[currency]
-}
-
-// 'EUR/hour' and the like. A cost in any other unit would be multiplied by hours regardless,
-// so scoring warns about it and ROI relies on it to find hourly costs among the assumptions.
-export function isHourlyCostUnit(unit: string): boolean {
-  const segments = unit.split('/')
-  return segments.length === 2 && segments[1] === 'hour' && moneyUnitCurrency(unit) !== null
 }
 
 function resolveLinked<T extends { id: string }>(ids: readonly string[], items: readonly T[], onMissing: (id: string) => void): T[] {
@@ -97,7 +90,10 @@ function clampScore(score: number): number {
 export function scoreOpportunity(input: ScoringInput): ScoringResult {
   const { opportunity, company, config, now } = input
   const eur = config.agencyCurrency
-  const warnings: string[] = []
+  const warnings: ScoringResult['warnings'] = []
+  const warn = (code: ScoringWarningCode, message: string): void => {
+    warnings.push({ code, message })
+  }
   const breakdown: BreakdownRow[] = []
   const assumptions: TracedValue[] = []
   // One entry per TracedValue object, so a company rate shared by several processes is one
@@ -105,18 +101,25 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
   const assume = (traced: TracedValue): void => {
     if (!assumptions.includes(traced)) assumptions.push(traced)
   }
-  const show = (label: string, value: number, unit: string, source: Source, formula: string): void => {
-    breakdown.push({ label, value, unit, source, formula })
+  const show = (
+    label: string,
+    value: number,
+    unit: string,
+    source: Source,
+    formula: string,
+    audience: BreakdownRow['audience'] = 'client',
+  ): void => {
+    breakdown.push({ label, value, unit, source, formula, audience })
   }
 
   const processes = resolveLinked(opportunity.processIds, input.processes, (id) => {
-    warnings.push(`MISSING_PROCESS: linked process '${id}' was not supplied, so it contributes no value`)
+    warn('MISSING_PROCESS', `Linked process '${id}' was not supplied, so it contributes no value`)
   })
   const patterns = resolveLinked(opportunity.patternIds, input.patterns, (id) => {
-    warnings.push(`MISSING_PATTERN: linked pattern '${id}' was not supplied, so its hours are not counted`)
+    warn('MISSING_PATTERN', `Linked pattern '${id}' was not supplied, so its hours are not counted`)
   })
   if (processes.length === 0) {
-    warnings.push('NO_PROCESSES: no linked process, so the annual value is 0')
+    warn('NO_PROCESSES', 'No linked process, so the annual value is 0')
   }
 
   // §1.1 Value
@@ -156,16 +159,19 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     const cost = process.roleHourlyCost ?? company.blendedHourlyCost
     if (cost === null) {
       everyHourlyCostClientStated = false
-      warnings.push(
-        `NO_HOURLY_COST: '${process.name}' has no role hourly cost and the company has no blended hourly cost, so its labour value is 0`,
+      warn(
+        'NO_HOURLY_COST',
+        `'${process.name}' has no role hourly cost and the company has no blended hourly cost, so its labour value is 0`,
       )
       show(`${process.name}: effective hourly cost`, 0, `${eur}/hour`, 'default', 'no hourly cost available')
     } else {
       assume(cost)
       if (cost.source !== 'client-stated') everyHourlyCostClientStated = false
-      if (!isHourlyCostUnit(cost.unit)) {
-        warnings.push(
-          `NON_HOURLY_COST_UNIT: the hourly cost for '${process.name}' is in '${cost.unit}', not a currency per hour; check the figure`,
+      // Without a currency the figure is not money, yet it is still multiplied by hours as if it were.
+      if (cost.currency === undefined) {
+        warn(
+          'NON_HOURLY_COST_UNIT',
+          `The hourly cost for '${process.name}' carries no currency, so it is not a money figure and is used as ${eur}; check the figure`,
         )
       }
       const costEur = toAgencyCurrency(cost, config)
@@ -218,14 +224,17 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     'none',
   )
   const strategicMultiplier = config.scoring.strategicMultipliers[impact]
-  // The factor is shown so the working panel can explain the value score. The weighted value
-  // itself is for ranking only and stays off the breakdown, which proposals render.
+  // The multiplier, the value score, the effort score, the priority index and the quadrant are
+  // ranking figures: internal rows, which documents filter out by audience. The weighted value
+  // stays off the breakdown entirely, and the value-score formula names the multiplier instead
+  // of printing it, so no row pairs it with the client-facing annual value.
   show(
     'Strategic multiplier',
     strategicMultiplier,
     'factor',
     'default',
     `config.scoring.strategicMultipliers.${impact} (highest revenue impact among linked processes)`,
+    'internal',
   )
   const weightedValue = annualValue * strategicMultiplier
   const valueScore = clampScore(Math.round((100 * weightedValue) / config.scoring.valueCeiling))
@@ -234,7 +243,8 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     valueScore,
     'points',
     valueSource,
-    `min(100, round(100 × ${fmt(annualValue)} × ${fmt(strategicMultiplier)} / ${fmt(config.scoring.valueCeiling)}))`,
+    `min(100, round(100 × ${fmt(annualValue)} × strategic multiplier / ${fmt(config.scoring.valueCeiling)}))`,
+    'internal',
   )
 
   // §1.2 Effort. The inputs are Alex's assessment of the build, hence 'estimated'.
@@ -282,7 +292,7 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
 
   const patternLinked = patterns.length > 0
   if (!patternLinked) {
-    warnings.push('NO_PATTERN: no linked pattern, so build hours start from config.estimation.fallbackPatternHours')
+    warn('NO_PATTERN', 'No linked pattern, so build hours start from config.estimation.fallbackPatternHours')
   }
   const baseHours = patternLinked
     ? patterns.reduce((sum, pattern) => sum + pattern.baseHours, 0)
@@ -312,6 +322,7 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     'points',
     effortSource,
     `min(100, round(100 × ${fmt(rawBuildHours)} / ${fmt(config.scoring.effortCeiling)}))`,
+    'internal',
   )
 
   // §1.3 Confidence
@@ -334,8 +345,9 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     `${CONFIDENCE_MAX} − ${CONFIDENCE_PENALTIES.defaultSource} × ${defaults} (default) − ${CONFIDENCE_PENALTIES.estimatedSource} × ${estimates} (estimated) − ${noPatternPenalty} (${patternLinked ? 'pattern linked' : 'no pattern linked'}) − ${hourlyCostPenalty} (hourly cost ${everyHourlyCostClientStated ? 'client-stated' : 'not client-stated'}), clamped to [${CONFIDENCE_MIN}, ${CONFIDENCE_MAX}]`,
   )
   if (confidence < LOW_CONFIDENCE_THRESHOLD) {
-    warnings.push(
-      `LOW_CONFIDENCE: confidence ${confidence} is below ${LOW_CONFIDENCE_THRESHOLD}; warn before this opportunity reaches a proposal`,
+    warn(
+      'LOW_CONFIDENCE',
+      `Confidence ${confidence} is below ${LOW_CONFIDENCE_THRESHOLD}; warn before this opportunity reaches a proposal`,
     )
   }
 
@@ -347,6 +359,7 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     'index',
     valueSource,
     `(${fmt(valueScore)} × ${fmt(confidence)} / 100) / (0.5 + ${fmt(effortScore)} / 100)`,
+    'internal',
   )
   const highValue = valueScore >= QUADRANT_THRESHOLD
   const highEffort = effortScore >= QUADRANT_THRESHOLD

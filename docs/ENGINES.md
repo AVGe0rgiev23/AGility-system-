@@ -20,6 +20,11 @@ All internal math is in `Config.agencyCurrency` (EUR). Money inputs arrive as
 `TracedValue` with their own currency and are converted at the top of each
 engine using `Config.fxRates`. Outputs are EUR. Display layers convert back.
 
+A `TracedValue` is money exactly when its `currency` is set. Its `unit` is display
+text: engines never parse it, and a value that carries a currency converts
+whatever its unit says. A value without a currency is not money and is used as
+is.
+
 ## Calibration is applied exactly once
 
 `Pattern.baseHours` is **uncalibrated** everywhere. The scoring engine uses it
@@ -32,7 +37,8 @@ Applying it in both places would compound the multiplier and inflate every quote
 ```ts
 type CalibrationLookup = Record<string, {
   multiplier: number
-  sampleCount: number
+  sampleCount: number         // every sample, as CalibrationRecord.sampleCount
+  usableSampleCount: number   // samples with estimatedHours > 0; trust is keyed on these
   trustworthy: boolean
 }>
 
@@ -82,14 +88,73 @@ depending on when it ran. The caller passes the current time as an ISO string,
 and the engine copies it into `computedAt`. `now` is never part of `inputsHash`,
 so identical inputs always hash identically, whenever they are computed.
 
+## inputsHash
+
+`inputsHash` covers exactly the fields an engine reads, not whole records or the
+whole Config. An edit to a field the engine does not read (an opportunity title,
+`storage.lastSyncAt`, the calibration of a pattern that is not in use) never
+invalidates a cache. An edit to a field it does read always does.
+
+The hash is cyrb53 over canonical JSON, with object keys sorted at every depth. It
+is synchronous because `crypto.subtle` is async and a browser API. A golden test
+pins its output. Every cached result and every document override stores a hash,
+so a change to the hash function or to the serialisation would make all of them
+look drifted at once. That change must ship deliberately, with a migration.
+
+The hash covers an engine's inputs, not its behaviour. See ARCHITECTURE, Derived
+data policy.
+
+## Warnings and flags
+
+Every warning is a `{ code, message }` object. Screens and documents act on
+`code`, which comes from a fixed vocabulary for each engine and is validated by
+that engine's result schema. `message` is prose for Alex: it names the figures
+involved and is never parsed. Estimate `flags` are bare codes.
+
+| Engine | Code | Raised when |
+|---|---|---|
+| Scoring | `MISSING_PROCESS` | an id in `processIds` has no supplied process; it contributes no value |
+| Scoring | `MISSING_PATTERN` | an id in `patternIds` has no supplied pattern; its hours are not counted |
+| Scoring | `NO_PROCESSES` | no linked process is supplied; the annual value is 0 |
+| Scoring | `NO_HOURLY_COST` | a process has no role rate and the company no blended rate; its labour value is 0 |
+| Scoring | `NON_HOURLY_COST_UNIT` | an effective hourly cost carries no `currency`, so it is not money yet is multiplied by hours |
+| Scoring | `NO_PATTERN` | no linked pattern is supplied; base hours fall back (§1.2) |
+| Scoring | `LOW_CONFIDENCE` | confidence is below 50 |
+| Estimate flag | `UNDERPRICED` | `indicativePrice` is above a bounded band's ceiling |
+| Estimate flag | `BELOW_FLOOR` | `indicativePrice` is below a bounded band's floor |
+| Estimate flag | `CUSTOM_QUOTE` | the selected band is the unbounded one |
+| Estimate flag | `INVALID_BAND_CONFIG` | the selected bounded band has a null floor or ceiling |
+| Estimate flag | `EMPTY_SCOPE` | `totalHours === 0` |
+| Estimate flag | `LOW_CONFIDENCE` | any selected opportunity's confidence is below 50 |
+| Estimate flag | `UNCALIBRATED_PATTERN` | any selected opportunity's primary pattern is null, absent from the lookup, or untrustworthy |
+| Run cost | `MISSING_USAGE_FORMULA` | a usage-based item has no formula; it prices at 0 |
+| Run cost | `AGENCY_COST_UNDER_CLIENT_OWNED` | the client-owned column carries agency cost, whatever model is selected |
+| Run cost | `RETAINER_MARGIN_THIN` | the selected model's agency annual cost exceeds 40% of the annual retainer |
+| Run cost | `RETAINER_NOT_SET` | no retainer is set and the selected model's agency monthly cost is above 0 |
+| ROI | `EMPTY_SCOPE` | no opportunity is selected |
+| ROI | `NO_IMPLEMENTATION_COST` | the estimate prices at 0; payback and both ROI ratios are null |
+| ROI | `NO_PAYBACK` | the conservative net annual benefit is 0 or less |
+| ROI | `PAYBACK_TOO_LONG` | the conservative payback exceeds `paybackWarningMonths` |
+| ROI | `LOW_CONFIDENCE` | the lowest confidence of a non-empty selection is below 50 |
+| ROI | `RUN_COST_EATS_CASE` | the annual run cost exceeds 30% of the conservative gross value |
+| ROI | `DEFAULT_COST` | any assumption that carries a currency has source `default` |
+
 ---
 
 ## 1. Scoring engine (`scoring.ts`)
 
 ### 1.1 Value
 
+Processes are looked up by `opportunity.processIds`, and anything passed that the
+opportunity does not reference is ignored. An id with no supplied process raises
+`MISSING_PROCESS` and contributes nothing. With no linked process supplied at all,
+`NO_PROCESSES` is raised and the annual value is 0.
+
 Hourly cost for a process is `process.roleHourlyCost` when set, otherwise
-`company.blendedHourlyCost`. Converted to EUR.
+`company.blendedHourlyCost`. Converted to EUR. When neither exists the process
+raises `NO_HOURLY_COST` and its labour value is 0. A cost without a `currency` is
+not money (see Currency rule), so it raises `NON_HOURLY_COST_UNIT` and is used as
+is.
 
 For each linked `Process`:
 
@@ -127,11 +192,18 @@ weightedValue = annualValue × config.scoring.strategicMultipliers[impact]
 ```
 
 `weightedValue` is used **for ranking only**. Never show it to a client. Every
-client-facing figure uses unweighted `annualValue`.
+client-facing figure uses unweighted `annualValue`. `weightedValue` has no
+breakdown row. The value-score row's formula names the strategic multiplier
+instead of printing it, so no row pairs the multiplier with the annual value and
+the weighted value cannot be recovered.
 
 ```
-valueScore = min(100, round(100 × weightedValue / config.scoring.valueCeiling))
+valueScore = clamp(round(100 × weightedValue / config.scoring.valueCeiling), 0, 100)
 ```
+
+The lower clamp at 0 is defensive. Every traced value is non-negative, so valid
+data cannot produce a negative score, and the clamp stops unvalidated input from
+producing one. The same applies to `effortScore`.
 
 ### 1.2 Effort
 
@@ -150,28 +222,46 @@ valueScore = min(100, round(100 × weightedValue / config.scoring.valueCeiling))
 ```
 effortPoints = Σ(above)
 
-baseHours = Σ(pattern.baseHours) for each linked pattern
+baseHours = Σ(pattern.baseHours) for each supplied linked pattern
             // UNCALIBRATED
-            // if no pattern is linked: config.estimation.fallbackPatternHours
+            // if none is supplied: config.estimation.fallbackPatternHours
 
 rawBuildHours = baseHours + (effortPoints × config.scoring.hoursPerEffortPoint)
 
-effortScore = min(100, round(100 × rawBuildHours / config.scoring.effortCeiling))
+effortScore = clamp(round(100 × rawBuildHours / config.scoring.effortCeiling), 0, 100)
 ```
+
+Missing-pattern fallback. Patterns are looked up by `opportunity.patternIds`. An
+id with no supplied pattern raises `MISSING_PATTERN`, and its hours are not
+counted. When no linked pattern is supplied, either because none is linked or
+because every linked one is missing, `baseHours` falls back to
+`fallbackPatternHours`, `NO_PATTERN` is raised, and the 15-point no-pattern penalty
+in §1.3 applies.
+
+The effort inputs are Alex's assessment of the build, so effort rows carry source
+`estimated`. Base hours and the rows derived from them are `estimated` with a
+pattern and `default` on the fallback.
 
 ### 1.3 Confidence
 
-Count sources across every TracedValue feeding this opportunity.
+Count sources across every TracedValue feeding this opportunity. Each distinct
+TracedValue counts once, so a company rate shared by several processes is one
+assumption. `errorReductionPercent` feeds the score, and counts, only when some
+process has both error inputs.
 
 ```
 confidence = 100
   − (12 × count(source === 'default'))
   − (6  × count(source === 'estimated'))
-  − (15 if no pattern is linked)
+  − (15 if no linked pattern is supplied)
   − (10 if the effective hourly cost source !== 'client-stated')
 
 clamp to [15, 100]
 ```
+
+The hourly-cost penalty applies once. It applies when any linked process's
+effective hourly cost is missing or not client-stated, and also when no process is
+supplied, since there is then no client-stated cost either.
 
 Confidence appears wherever the numbers do, and it gates the proposal: **warn
 before rendering when any selected opportunity is below 50.**
@@ -209,9 +299,10 @@ interface ScoringResult {
     unit: string
     source: Source
     formula: string
+    audience: 'client' | 'internal'   // defaults to 'client'
   }[]
   assumptions: TracedValue[]
-  warnings: string[]
+  warnings: { code: ScoringWarningCode; message: string }[]
   inputsHash: string
   computedAt: string
 }
@@ -219,6 +310,24 @@ interface ScoringResult {
 
 Populate `breakdown` fully. It is what the UI renders as the expandable working
 panel and what the proposal renders as its assumptions table.
+
+### Audience
+
+Every breakdown row carries `audience`, defaulting to `'client'`. These ranking
+figures are internal:
+
+- the Strategic multiplier row
+- the Value score row
+- the Effort score row
+- the Priority index row
+- the quadrant and `weightedValue`, which have no row, because a row holds a number
+
+Every other row is client-facing.
+
+**Renderer rule.** The Stage 3 renderer filters breakdown rows on `audience` and
+never on label text. A client-facing document renders only rows with
+`audience === 'client'`. Labels are prose and may change; the flag is the
+contract. No client-facing row's value or formula may reveal an internal figure.
 
 ### Invariants (property tests)
 
@@ -229,6 +338,8 @@ panel and what the proposal renders as its assumptions table.
 - Calibration data has **no effect** on any scoring output.
 - All scores are in [0, 100]; confidence in [15, 100].
 - The same inputs always produce the same `inputsHash`.
+- Exactly the four ranking rows are internal. No client row's formula contains the
+  weighted value or the strategic multiplier.
 
 ---
 
@@ -238,11 +349,20 @@ Runs over the selected set.
 
 ```
 For each selected opportunity:
-  multiplier = calibration[opportunity.primaryPatternId]?.multiplier ?? 1.0
-  hours      = scoring.rawBuildHours × multiplier
+  entry       = calibration[opportunity.primaryPatternId]   // own keys only
+  multiplier  = entry?.multiplier ?? 1.0
+  trustworthy = entry?.trustworthy ?? false
+  hours       = scoring.rawBuildHours × multiplier
 
 calibratedHours = Σ(hours)
 ```
+
+A null `primaryPatternId`, or a primary pattern with no entry in the lookup, is
+uncalibrated by absence, not by evidence. It gets multiplier 1.0 and
+`trustworthy: false`, so it raises `UNCALIBRATED_PATTERN`. Calibration for
+patterns that are linked but not primary is ignored. The lookup is read by own
+keys only, so a pattern id such as `constructor` cannot pick up an inherited
+property.
 
 Overheads are **additive on calibratedHours**; contingency applies **after**:
 
@@ -257,6 +377,9 @@ totalHours     = subtotalHours × (1 + contingency)          // × 1.15
 // combined: totalHours = calibratedHours × 1.702
 ```
 
+`overheadBreakdown` lists one entry per overhead, labelled with its Config key:
+`discovery`, `testing`, `documentation`, `deployment`.
+
 Empty scope. When `totalHours === 0`, for example when no opportunity is
 selected, no band is placed. Return `price: 0`, `indicativePrice: 0`,
 `bandId: null`, `effectiveHourlyRate: null` and the flag `EMPTY_SCOPE`, and skip
@@ -266,37 +389,58 @@ up to the pilot floor, and `price / totalHours` has no answer.
 Band placement. `band.maxHours === null` means the band is unbounded. Config
 validation (DATA-MODEL, Config, Validation) guarantees bounded bands in strictly
 ascending `maxHours` order, each with a `floor` and a `ceiling`, then exactly one
-unbounded band, last, identified by `id === 'custom'`, whose `floor` and
-`ceiling` are both `null`. Bands are compared in stored order:
+unbounded band, last, with `id === 'custom'` and a `floor` and `ceiling` that are
+both `null`. The estimate recognises that band by `maxHours === null`, never by
+its id. Bands are compared in stored order:
 
 ```
 band = first band where band.maxHours !== null && totalHours <= band.maxHours,
-       else the unbounded band (maxHours === null, id === 'custom')
+       else the unbounded band (maxHours === null)
 
 indicativePrice = totalHours × config.pricing.targetHourlyRate
 
-// Config validation guarantees a floor is null only on the custom band.
-price = band.floor === null
-          ? indicativePrice                      // custom band, no published price: no clamp
-          : clamp(indicativePrice, band.floor, band.ceiling)
+price = band.maxHours === null
+          ? indicativePrice                        // unbounded: no published price, CUSTOM_QUOTE
+          : band.floor === null || band.ceiling === null
+            ? indicativePrice                      // invalid Config: INVALID_BAND_CONFIG
+            : clamp(indicativePrice, band.floor, band.ceiling)
 ```
+
+No unbounded band. When `config.pricing.bands` has no unbounded band,
+`estimateScope` throws. A scope above every bounded band has nowhere to go, so no
+price exists. ConfigSchema never produces such a Config, and this is the only
+Config fault the estimate throws on.
+
+A bounded band with a null `floor` or `ceiling` is also invalid Config that
+escaped validation, but a price still exists. It is priced unclamped and flagged
+`INVALID_BAND_CONFIG` rather than thrown, because a crash inside a price
+calculation would hide the cause.
 
 Flags:
 
-- `UNDERPRICED` and `BELOW_FLOOR` are evaluated **only when the band's `floor`
-  and `ceiling` are both non-null**. An unguarded comparison against `null`
-  coerces it to 0, so every custom quote would read as underpriced.
+- `UNDERPRICED` and `BELOW_FLOOR` are evaluated **only on a bounded band whose
+  `floor` and `ceiling` are both non-null**. An unguarded comparison against
+  `null` coerces it to 0, so every custom quote would read as underpriced.
   - `indicativePrice > band.ceiling` → **`UNDERPRICED`**. The work exceeds what
     the published band allows. Cut scope or quote custom. Do not silently clamp
     and eat the difference. Surface loudly in the UI and block proposal render
     until acknowledged.
   - `indicativePrice < band.floor` → `BELOW_FLOOR`, the floor applies.
-- `band.id === 'custom'` → `CUSTOM_QUOTE`, no published price. This is the only
-  band flag the custom band can raise, and its `price` is `indicativePrice`,
-  unclamped.
+- `band.maxHours === null` → `CUSTOM_QUOTE`, no published price. This is the
+  same predicate that leaves the price unclamped, so an unclamped price is never
+  unflagged. The band's id plays no part. It is the only band flag the unbounded
+  band raises, and its `price` is `indicativePrice`.
+- a bounded band with a null `floor` or `ceiling` → `INVALID_BAND_CONFIG`. Priced
+  at `indicativePrice`, unclamped, with no other band flag.
 - `totalHours === 0` → `EMPTY_SCOPE`. See Empty scope above; no band flag applies.
 - any selected opportunity confidence < 50 → `LOW_CONFIDENCE`.
-- any used pattern with `trustworthy === false` → `UNCALIBRATED_PATTERN`.
+- any selected opportunity whose primary pattern is null, absent from the lookup,
+  or `trustworthy === false` → `UNCALIBRATED_PATTERN`.
+
+Flags come in a fixed order. First comes at most one of `UNDERPRICED`,
+`BELOW_FLOOR`, `CUSTOM_QUOTE`, `INVALID_BAND_CONFIG` or `EMPTY_SCOPE`, then
+`LOW_CONFIDENCE`, then `UNCALIBRATED_PATTERN`. The last two are still raised on an
+empty scope.
 
 ### Output
 
@@ -340,6 +484,8 @@ never feeds the price.**
 - `price` is always within the band's floor and ceiling when both are non-null.
 - `totalHours === 0` always gives `price: 0`, `bandId: null`,
   `effectiveHourlyRate: null` and the `EMPTY_SCOPE` flag.
+- `CUSTOM_QUOTE` is raised exactly when the selected band is unbounded, always
+  alone among the band flags, and then `price === indicativePrice`.
 
 ---
 
@@ -383,7 +529,13 @@ agencyMonthly = Σ(items where paidBy[model] === 'agency')
 agencyAnnual  = agencyMonthly × 12
 ```
 
-Under `client-owned`, `agencyMonthly` should be 0; warn if it is not.
+A usage-based item that reaches the engine without a formula prices at 0 and
+raises `MISSING_USAGE_FORMULA`.
+
+Under `client-owned`, `agencyMonthly` should be 0.
+`AGENCY_COST_UNDER_CLIENT_OWNED` checks the client-owned column **whatever model
+is selected**, because that column appears in every proposal's comparison table.
+The retainer warnings below judge the selected model.
 
 Margin warning, **only when `supportRetainerMonthly` is set**:
 
@@ -410,7 +562,7 @@ interface RunCostResult {
   clientMonthly: number
   agencyMonthly: number
   agencyAnnual: number
-  warnings: string[]
+  warnings: { code: RunCostWarningCode; message: string }[]
   inputsHash: string
   computedAt: string
 }
@@ -433,16 +585,29 @@ annualRunCost      = runCost.agencyAnnual + (clientMonthly × 12)
 
 netAnnualBenefit   = grossAnnualValue − annualRunCost
 
-paybackMonths      = netAnnualBenefit <= 0
+paybackMonths      = implementationCost === 0 || netAnnualBenefit <= 0
                        ? null
                        : implementationCost / (netAnnualBenefit / 12)
 
-roiYear1  = (netAnnualBenefit − implementationCost) / implementationCost
-roiYear3  = (3 × netAnnualBenefit − implementationCost) / implementationCost
+roiYear1  = implementationCost === 0
+              ? null
+              : (netAnnualBenefit − implementationCost) / implementationCost
+roiYear3  = implementationCost === 0
+              ? null
+              : (3 × netAnnualBenefit − implementationCost) / implementationCost
 
 npv = −implementationCost
       + Σ(t = 1..horizonYears) netAnnualBenefit / (1 + discountRate)^t
 ```
+
+Zero price. A zero implementation cost has no return ratio and nothing to pay
+back, so `paybackMonths`, `roiYear1` and `roiYear3` are `null` in every scenario.
+A 0 would print as a real figure on a proposal. `NO_IMPLEMENTATION_COST` warns.
+
+`lowestConfidence` is the minimum over the selected set, or 0 when nothing is
+selected. `assumptions` lists each distinct TracedValue once across the set,
+compared by value, because cached scoring results come back from storage as
+separate objects.
 
 ### Scenarios
 
@@ -465,9 +630,9 @@ interface ROIResult {
   scenarios: Record<'conservative' | 'expected' | 'optimistic', {
     grossAnnualValue: number
     netAnnualBenefit: number
-    paybackMonths: number | null
-    roiYear1: number
-    roiYear3: number
+    paybackMonths: number | null   // null when netAnnualBenefit <= 0 or the price is 0
+    roiYear1: number | null        // null when the price is 0
+    roiYear3: number | null        // null when the price is 0
     npv: number
   }>
   hoursSavedPerMonth: number
@@ -476,7 +641,7 @@ interface ROIResult {
   annualRunCost: number
   assumptions: TracedValue[]
   lowestConfidence: number
-  warnings: string[]
+  warnings: { code: ROIWarningCode; message: string }[]
   inputsHash: string
   computedAt: string
 }
@@ -484,11 +649,29 @@ interface ROIResult {
 
 ### Warnings
 
-- `paybackMonths > config.roi.paybackWarningMonths` — hard to sell, cut scope.
-- `paybackMonths === null` — the running cost exceeds the value. Stop.
-- `lowestConfidence < 50` — the case rests on guesses.
-- `annualRunCost > grossAnnualValue × 0.3` — running cost eats the case.
-- any hourly cost with source `default` — you are quoting on a made-up salary.
+Warnings that depend on a scenario are judged on **conservative**
+(`ROI_WARNING_SCENARIO`), the scenario that leads every client-facing document.
+Each of their messages names that scenario. The same case can pass on expected
+figures and fail on conservative ones, and the proposal shows conservative.
+
+- `NO_PAYBACK`: conservative `netAnnualBenefit <= 0`. The running cost meets or
+  exceeds the value. Stop. It is keyed on the net benefit rather than on a null
+  payback, because a null payback may only mean a zero price.
+- `PAYBACK_TOO_LONG`: conservative `paybackMonths >
+  config.roi.paybackWarningMonths`. Hard to sell, cut scope.
+- `RUN_COST_EATS_CASE`: `annualRunCost >` conservative `grossAnnualValue × 0.3`.
+  The running cost eats the case.
+
+These do not depend on a scenario and name none:
+
+- `EMPTY_SCOPE`: nothing is selected, so there is no case to make.
+  `LOW_CONFIDENCE` is not raised.
+- `NO_IMPLEMENTATION_COST`: the estimate prices at 0 (see Zero price).
+- `LOW_CONFIDENCE`: `lowestConfidence < 50`. The case rests on guesses.
+- `DEFAULT_COST`: any assumption with a `currency` has source `default`, so you are
+  quoting on made-up money. Money is told by its currency alone (Currency rule).
+  That cannot separate an hourly cost from a cost per error, so any default money
+  figure warns.
 
 ---
 
@@ -497,17 +680,33 @@ interface ROIResult {
 The compounding mechanism. Pure; the write-back is orchestrated by a hook.
 
 ```
-ratios = samples.slice(-10).map(s => s.actualHours / s.estimatedHours)
+usable            = samples.filter(s => s.estimatedHours > 0)
+sampleCount       = samples.length
+usableSampleCount = usable.length
 
-multiplier = sampleCount < 3
+ratios = usable.slice(-10).map(s => s.actualHours / s.estimatedHours)
+
+multiplier = usableSampleCount < 3
                ? 1.0
                : clamp(median(ratios), 0.5, 3.0)
 
-trustworthy = sampleCount >= 3
+trustworthy = usableSampleCount >= 3
 ```
 
 Median, not mean, so one catastrophic project does not permanently distort the
 estimate. Clamped so a single data-entry error cannot make future quotes absurd.
+
+`sampleCount` and `usableSampleCount`. `sampleCount` reports every sample, the
+same count `CalibrationRecord.sampleCount` holds. `usableSampleCount` counts
+samples with `estimatedHours > 0`, the only ones with a ratio. The window, the
+median and `trustworthy` all use usable samples, so three samples of which one is
+unusable are still only a hint. The schema requires a positive estimate on every
+stored sample, so for validated data the two counts are equal. They differ only
+for input that reached the engine unvalidated.
+
+`buildCalibrationLookup(records)` recomputes every entry from its samples and
+ignores the multiplier stored on the record, which is a cache. Records that share
+a `patternId` have their samples merged in order.
 
 Surface in the UI:
 
@@ -530,9 +729,12 @@ skipping it deliberately awkward.
 
 ### Invariants
 
-- Fewer than 3 samples always yields exactly 1.0 and `trustworthy: false`.
+- Fewer than 3 usable samples always yields exactly 1.0 and `trustworthy: false`,
+  however many samples there are.
 - The multiplier never leaves [0.5, 3.0].
-- Adding a sample identical to the current median does not change the multiplier.
+- Adding a sample identical to the current median does not change the multiplier,
+  while the window is not yet full. Once 10 usable samples exist, adding one evicts
+  the oldest, so the window itself changes.
 
 ---
 

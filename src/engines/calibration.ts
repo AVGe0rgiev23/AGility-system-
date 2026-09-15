@@ -11,7 +11,11 @@ export type CalibrationSample = CalibrationRecord['samples'][number]
 
 export interface CalibrationEntry {
   multiplier: number
+  // Every sample, as CalibrationRecord.sampleCount reports it.
   sampleCount: number
+  // Samples with a positive estimate, the only ones with a ratio. Trust is keyed on these, so
+  // three samples of which one is unusable are still only a hint.
+  usableSampleCount: number
   trustworthy: boolean
 }
 
@@ -27,11 +31,13 @@ function median(sorted: readonly number[]): number {
 }
 
 export function computeCalibration(samples: readonly CalibrationSample[]): CalibrationEntry {
-  // A sample with no positive estimate has no ratio, so it carries no information and is not counted.
+  // A sample with no positive estimate has no ratio, so it carries no calibration information.
+  // The schema rejects one, but engines take plain data and may meet one unvalidated.
   const usable = samples.filter((sample) => sample.estimatedHours > 0)
-  const sampleCount = usable.length
-  if (sampleCount < CALIBRATION_MIN_SAMPLES) {
-    return { multiplier: 1.0, sampleCount, trustworthy: false }
+  const sampleCount = samples.length
+  const usableSampleCount = usable.length
+  if (usableSampleCount < CALIBRATION_MIN_SAMPLES) {
+    return { multiplier: 1.0, sampleCount, usableSampleCount, trustworthy: false }
   }
   const ratios = usable
     .slice(-CALIBRATION_WINDOW)
@@ -39,7 +45,7 @@ export function computeCalibration(samples: readonly CalibrationSample[]): Calib
     .sort((a, b) => a - b)
   // Clamped so a single data-entry error cannot make future quotes absurd.
   const multiplier = Math.min(CALIBRATION_MULTIPLIER_MAX, Math.max(CALIBRATION_MULTIPLIER_MIN, median(ratios)))
-  return { multiplier, sampleCount, trustworthy: true }
+  return { multiplier, sampleCount, usableSampleCount, trustworthy: true }
 }
 
 // Recomputes every entry from its samples. The multiplier stored on a record is a cache

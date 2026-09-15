@@ -4,14 +4,13 @@ import { defaultConfig } from '../schema/config'
 import type { Process } from '../schema/process'
 import type { ScoringResult } from '../schema/results'
 import type { Source, TracedValue } from '../schema/traced'
-import { mulberry32, pick, randomInt, randomNumber, randomScoringInput } from './__fixtures__/engine-fixtures'
+import { mulberry32, pick, randomInt, randomNumber, randomScoringInput, warningCodes } from './__fixtures__/engine-fixtures'
 import { buildCalibrationLookup } from './calibration'
 import {
   CONFIDENCE_MAX,
   CONFIDENCE_MIN,
   CONFIDENCE_PENALTIES,
   EFFORT_POINTS,
-  isHourlyCostUnit,
   LOW_CONFIDENCE_THRESHOLD,
   QUADRANT_THRESHOLD,
   scoreOpportunity,
@@ -133,17 +132,6 @@ describe('toAgencyCurrency', () => {
   })
 })
 
-describe('isHourlyCostUnit', () => {
-  it('accepts a currency code per hour and nothing else', () => {
-    expect(isHourlyCostUnit('EUR/hour')).toBe(true)
-    expect(isHourlyCostUnit('GBP/hour')).toBe(true)
-    expect(isHourlyCostUnit('EUR')).toBe(false)
-    expect(isHourlyCostUnit('EUR/day')).toBe(false)
-    expect(isHourlyCostUnit('hours/week')).toBe(false)
-    expect(isHourlyCostUnit('EUR/hour/person')).toBe(false)
-  })
-})
-
 describe('scoreOpportunity value (§1.1)', () => {
   it('computes the worked example', () => {
     const result = scoreOpportunity(baseInput())
@@ -195,15 +183,21 @@ describe('scoreOpportunity value (§1.1)', () => {
     const result = scoreOpportunity(input)
     expect(result.annualValue).toBeCloseTo(2304, 10)
     expect(result.hoursSavedPerMonth).toBeCloseTo(33.6, 10)
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^NO_HOURLY_COST: /))
+    expect(warningCodes(result)).toContain('NO_HOURLY_COST')
     expect(row(result, 'Quote request to CRM entry: effective hourly cost')).toMatchObject({ value: 0, source: 'default' })
   })
 
-  it('warns when an hourly cost is not stated per hour', () => {
-    const input = baseInput()
-    input.company.blendedHourlyCost = { value: 16, unit: 'EUR', currency: 'EUR', source: 'estimated' }
-    expect(scoreOpportunity(input).warnings).toContainEqual(expect.stringMatching(/^NON_HOURLY_COST_UNIT: /))
-    expect(scoreOpportunity(baseInput()).warnings).not.toContainEqual(expect.stringMatching(/^NON_HOURLY_COST_UNIT: /))
+  it('warns when an hourly cost carries no currency, and reads money from the currency, never the unit', () => {
+    const noCurrency = baseInput()
+    noCurrency.company.blendedHourlyCost = { value: 16, unit: 'rate', source: 'estimated' }
+    expect(warningCodes(scoreOpportunity(noCurrency))).toContain('NON_HOURLY_COST_UNIT')
+    // The unit is display text: a currency-carrying cost in any unit is money and converts.
+    const oddUnit = baseInput()
+    oddUnit.company.blendedHourlyCost = { value: 17, unit: 'per person-hour', currency: 'GBP', source: 'estimated' }
+    const result = scoreOpportunity(oddUnit)
+    expect(warningCodes(result)).not.toContain('NON_HOURLY_COST_UNIT')
+    expect(row(result, 'Quote request to CRM entry: effective hourly cost').value).toBeCloseTo(20, 10)
+    expect(warningCodes(scoreOpportunity(baseInput()))).not.toContain('NON_HOURLY_COST_UNIT')
   })
 
   it('weights by the highest revenue impact across linked processes, for ranking only', () => {
@@ -233,7 +227,7 @@ describe('scoreOpportunity value (§1.1)', () => {
     expect(result.annualValue).toBe(0)
     expect(result.hoursSavedPerMonth).toBe(0)
     expect(result.valueScore).toBe(0)
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^NO_PROCESSES: /))
+    expect(warningCodes(result)).toContain('NO_PROCESSES')
     expect(row(result, 'Strategic multiplier').value).toBe(1)
   })
 
@@ -242,7 +236,7 @@ describe('scoreOpportunity value (§1.1)', () => {
     input.opportunity.processIds = ['proc-1', 'proc-missing']
     const result = scoreOpportunity(input)
     expect(result.annualValue).toBeCloseTo(8755.2, 10)
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^MISSING_PROCESS: .*proc-missing/))
+    expect(result.warnings.find((warning) => warning.code === 'MISSING_PROCESS')?.message).toContain('proc-missing')
   })
 })
 
@@ -291,7 +285,7 @@ describe('scoreOpportunity effort (§1.2)', () => {
     const result = scoreOpportunity(input)
     expect(row(result, 'Base hours (uncalibrated)')).toMatchObject({ value: 8, source: 'default' })
     expect(result.rawBuildHours).toBeCloseTo(8 + 6.5 * 1.5, 10)
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^NO_PATTERN: /))
+    expect(warningCodes(result)).toContain('NO_PATTERN')
   })
 
   it('warns about a linked pattern that was not supplied and sums the rest', () => {
@@ -299,7 +293,7 @@ describe('scoreOpportunity effort (§1.2)', () => {
     input.patterns = [{ id: 'pat-email-triage', baseHours: 12 }]
     const result = scoreOpportunity(input)
     expect(row(result, 'Base hours (uncalibrated)').value).toBe(12)
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^MISSING_PATTERN: .*pat-crm-sync/))
+    expect(result.warnings.find((warning) => warning.code === 'MISSING_PATTERN')?.message).toContain('pat-crm-sync')
     input.patterns = []
     expect(row(scoreOpportunity(input), 'Base hours (uncalibrated)').value).toBe(8)
   })
@@ -368,10 +362,10 @@ describe('scoreOpportunity confidence (§1.3)', () => {
   })
 
   it('warns below the proposal gate', () => {
-    expect(scoreOpportunity(baseInput()).warnings).not.toContainEqual(expect.stringMatching(/^LOW_CONFIDENCE: /))
+    expect(warningCodes(scoreOpportunity(baseInput()))).not.toContain('LOW_CONFIDENCE')
     const input = withSource(baseInput(), 'estimated')
     expect(scoreOpportunity(input).confidence).toBeLessThan(LOW_CONFIDENCE_THRESHOLD)
-    expect(scoreOpportunity(input).warnings).toContainEqual(expect.stringMatching(/^LOW_CONFIDENCE: /))
+    expect(warningCodes(scoreOpportunity(input))).toContain('LOW_CONFIDENCE')
   })
 })
 
@@ -475,6 +469,26 @@ describe('scoreOpportunity output shape', () => {
     for (const entry of result.breakdown) {
       expect(Number.isFinite(entry.value), entry.label).toBe(true)
       expect(entry.formula, entry.label).not.toBe('')
+    }
+  })
+
+  it('marks exactly the ranking figures internal and every other row client-facing', () => {
+    const result = scoreOpportunity(baseInput())
+    const internal = result.breakdown.filter((entry) => entry.audience === 'internal').map((entry) => entry.label)
+    expect(internal).toEqual(['Strategic multiplier', 'Value score', 'Effort score', 'Priority index'])
+    expect(result.breakdown.every((entry) => entry.audience === 'client' || internal.includes(entry.label))).toBe(true)
+  })
+
+  it('leaves the weighted value recoverable from no row: the value-score formula names the multiplier instead of printing it', () => {
+    const result = scoreOpportunity(baseInput())
+    // Weighted value 10944 = annual value 8755.2 × direct-impact multiplier 1.25.
+    expect(result.weightedValue).toBeCloseTo(10944, 10)
+    const valueScore = row(result, 'Value score').formula
+    expect(valueScore).toBe('min(100, round(100 × 8755.2 × strategic multiplier / 30000))')
+    for (const entry of result.breakdown.filter((candidate) => candidate.audience === 'client')) {
+      expect(entry.formula, entry.label).not.toContain('10944')
+      expect(entry.formula, entry.label).not.toContain('1.25')
+      expect(entry.label, entry.label).not.toMatch(/weighted|strategic/i)
     }
   })
 

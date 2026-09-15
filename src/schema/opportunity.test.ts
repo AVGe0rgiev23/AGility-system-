@@ -16,6 +16,13 @@ describe('EffortInputsSchema', () => {
     expect(issuePaths(EffortInputsSchema, { ...inputs, novelty: 'unknown' })).toEqual(['novelty'])
   })
 
+  it('requires approvalSteps to be a whole number, at least 0', () => {
+    const inputs = opportunity().effortInputs
+    expect(issuePaths(EffortInputsSchema, { ...inputs, approvalSteps: -1 })).toEqual(['approvalSteps'])
+    expect(issuePaths(EffortInputsSchema, { ...inputs, approvalSteps: 1.5 })).toEqual(['approvalSteps'])
+    expect(issuePaths(EffortInputsSchema, { ...inputs, approvalSteps: 0 })).toEqual([])
+  })
+
   it('requires both API and auth flags on every integration', () => {
     const inputs = { ...opportunity().effortInputs, integrations: [{ name: 'Xero' }] }
     expect(issuePaths(EffortInputsSchema, inputs)).toEqual([

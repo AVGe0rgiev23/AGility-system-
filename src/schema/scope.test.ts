@@ -149,6 +149,16 @@ describe('TaskSchema, TimeEntrySchema and ProjectSchema', () => {
     expect(issuePaths(TaskSchema, withoutActuals)).toEqual(['actualHours'])
   })
 
+  it('reject negative estimated hours on a task', () => {
+    expect(issuePaths(TaskSchema, { ...task(), estimatedHours: -1 })).toEqual(['estimatedHours'])
+    expect(issuePaths(TaskSchema, { ...task(), estimatedHours: 0 })).toEqual([])
+  })
+
+  it('reject negative actual hours on a task', () => {
+    expect(issuePaths(TaskSchema, { ...task(), actualHours: -0.5 })).toEqual(['actualHours'])
+    expect(issuePaths(TaskSchema, { ...task(), actualHours: 0 })).toEqual([])
+  })
+
   it('reject unknown task and project statuses', () => {
     expect(issuePaths(TaskSchema, { ...task(), status: 'cancelled' })).toEqual(['status'])
     expect(issuePaths(ProjectSchema, { ...project(), status: 'archived' })).toEqual(['status'])

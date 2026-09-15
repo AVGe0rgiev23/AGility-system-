@@ -75,9 +75,10 @@ export const TaskSchema = z.object({
   title: z.string(),
   // Calibration write-back groups actual hours by this id; without it the task teaches nothing.
   patternId: z.string().optional(),
-  estimatedHours: z.number(),
+  // Summed per pattern into calibration samples, where a negative figure would skew the ratio.
+  estimatedHours: z.number().nonnegative(),
   // Null until logged. A project cannot be marked delivered while any task is still null.
-  actualHours: z.number().nullable(),
+  actualHours: z.number().nonnegative().nullable(),
   status: z.enum(['todo', 'doing', 'blocked', 'done']),
   blockedReason: z.string().optional(),
 })

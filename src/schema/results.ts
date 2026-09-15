@@ -5,6 +5,38 @@ import { SourceSchema, TracedValueSchema } from './traced'
 // Engine results are cached on records but never authoritative: a mismatched
 // inputsHash triggers a recompute. They are still validated on every read.
 
+// Each engine warns from a fixed vocabulary (ENGINES), so screens and documents act on the
+// code and never parse the message, which is prose for Alex to read.
+export const ScoringWarningCodeSchema = z.enum([
+  'MISSING_PROCESS',
+  'MISSING_PATTERN',
+  'NO_PROCESSES',
+  'NO_HOURLY_COST',
+  'NON_HOURLY_COST_UNIT',
+  'NO_PATTERN',
+  'LOW_CONFIDENCE',
+])
+export type ScoringWarningCode = z.infer<typeof ScoringWarningCodeSchema>
+
+export const RunCostWarningCodeSchema = z.enum([
+  'MISSING_USAGE_FORMULA',
+  'AGENCY_COST_UNDER_CLIENT_OWNED',
+  'RETAINER_MARGIN_THIN',
+  'RETAINER_NOT_SET',
+])
+export type RunCostWarningCode = z.infer<typeof RunCostWarningCodeSchema>
+
+export const ROIWarningCodeSchema = z.enum([
+  'EMPTY_SCOPE',
+  'NO_IMPLEMENTATION_COST',
+  'NO_PAYBACK',
+  'PAYBACK_TOO_LONG',
+  'LOW_CONFIDENCE',
+  'RUN_COST_EATS_CASE',
+  'DEFAULT_COST',
+])
+export type ROIWarningCode = z.infer<typeof ROIWarningCodeSchema>
+
 export const ScoringResultSchema = z.object({
   // EUR, unweighted. The only value figure that may reach a client.
   annualValue: z.number(),
@@ -26,10 +58,13 @@ export const ScoringResultSchema = z.object({
       unit: z.string(),
       source: SourceSchema,
       formula: z.string(),
+      // Who may see the row. Documents filter on this flag and never on label text, so a
+      // ranking-only figure cannot reach a client through a renamed row.
+      audience: z.enum(['client', 'internal']).default('client'),
     }),
   ),
   assumptions: z.array(TracedValueSchema),
-  warnings: z.array(z.string()),
+  warnings: z.array(z.object({ code: ScoringWarningCodeSchema, message: z.string() })),
   inputsHash: z.string(),
   computedAt: z.string(),
 })
@@ -39,6 +74,8 @@ export const EstimateFlagSchema = z.enum([
   'UNDERPRICED',
   'BELOW_FLOOR',
   'CUSTOM_QUOTE',
+  // A bounded band without a floor or ceiling reached the estimate: invalid Config escaped validation.
+  'INVALID_BAND_CONFIG',
   'LOW_CONFIDENCE',
   'UNCALIBRATED_PATTERN',
   'EMPTY_SCOPE',
@@ -89,7 +126,7 @@ export const RunCostResultSchema = z.object({
   clientMonthly: z.number(),
   agencyMonthly: z.number(),
   agencyAnnual: z.number(),
-  warnings: z.array(z.string()),
+  warnings: z.array(z.object({ code: RunCostWarningCodeSchema, message: z.string() })),
   inputsHash: z.string(),
   computedAt: z.string(),
 })
@@ -101,10 +138,11 @@ export const ROIResultSchema = z.object({
     z.object({
       grossAnnualValue: z.number(),
       netAnnualBenefit: z.number(),
-      // null when the running cost meets or exceeds the value: there is no payback.
+      // Null when the running cost meets or exceeds the value, or when the estimate prices at 0.
       paybackMonths: z.number().nullable(),
-      roiYear1: z.number(),
-      roiYear3: z.number(),
+      // Null when the estimate prices at 0: a ratio over a zero price has no answer.
+      roiYear1: z.number().nullable(),
+      roiYear3: z.number().nullable(),
       npv: z.number(),
     }),
   ),
@@ -114,7 +152,7 @@ export const ROIResultSchema = z.object({
   annualRunCost: z.number(),
   assumptions: z.array(TracedValueSchema),
   lowestConfidence: z.number(),
-  warnings: z.array(z.string()),
+  warnings: z.array(z.object({ code: ROIWarningCodeSchema, message: z.string() })),
   inputsHash: z.string(),
   computedAt: z.string(),
 })

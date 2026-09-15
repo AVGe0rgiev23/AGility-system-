@@ -26,7 +26,8 @@ type PricingBand = Config['pricing']['bands'][number]
 const OVERHEAD_KEYS = ['discovery', 'testing', 'documentation', 'deployment'] as const
 
 // First bounded band the hours fit in, else the unbounded one. ConfigSchema guarantees the
-// bounded bands ascend and exactly one unbounded band, with id 'custom', comes last.
+// bounded bands ascend and exactly one unbounded band, with id 'custom', comes last. Without an
+// unbounded band a large scope has nowhere to go, so that alone is thrown rather than flagged.
 function placeBand(bands: readonly PricingBand[], totalHours: number): PricingBand {
   const bounded = bands.find((band) => band.maxHours !== null && totalHours <= band.maxHours)
   if (bounded !== undefined) return bounded
@@ -76,17 +77,22 @@ export function estimateScope(input: EstimateInput): EstimateResult {
     const band = placeBand(config.pricing.bands, totalHours)
     bandId = band.id
     indicativePrice = totalHours * config.pricing.targetHourlyRate
-    if (band.floor !== null && band.ceiling !== null) {
+    if (band.maxHours === null) {
+      // The unbounded band has no published price. The quote and the flag share this one
+      // predicate, so an unclamped price can never go out unflagged, whatever the band's id.
+      price = indicativePrice
+      flags.push('CUSTOM_QUOTE')
+    } else if (band.floor === null || band.ceiling === null) {
+      // ConfigSchema requires both limits on a bounded band, so invalid Config escaped
+      // validation. There is nothing to clamp to; flagging it surfaces the cause, where a
+      // throw here would only crash the price calculation.
+      price = indicativePrice
+      flags.push('INVALID_BAND_CONFIG')
+    } else {
       price = Math.min(band.ceiling, Math.max(band.floor, indicativePrice))
-      // Evaluated only with both limits set: a comparison against null would read as 0 and
-      // call every custom quote underpriced.
       if (indicativePrice > band.ceiling) flags.push('UNDERPRICED')
       else if (indicativePrice < band.floor) flags.push('BELOW_FLOOR')
-    } else {
-      // No published price, so nothing to clamp to.
-      price = indicativePrice
     }
-    if (band.id === 'custom') flags.push('CUSTOM_QUOTE')
     effectiveHourlyRate = price / totalHours
   }
   if (scored.some(({ scoring }) => scoring.confidence < LOW_CONFIDENCE_THRESHOLD)) flags.push('LOW_CONFIDENCE')
