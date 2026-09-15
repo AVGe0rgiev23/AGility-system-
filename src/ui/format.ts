@@ -2,7 +2,7 @@ import type { Currency, TracedValue } from '../schema/traced'
 
 // Display only. A fixed locale, so every screen and every test prints the same text whatever the
 // browser's language. Its grouping commas are deliberate: editable fields never show this output.
-// They show String(value), because typed input refuses '1,200' as ambiguous (use-traced-draft).
+// They show String(value), because typed input reads '1,200' as 1.2, with a warning (use-traced-draft).
 const MONEY = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const PLAIN = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 })
 

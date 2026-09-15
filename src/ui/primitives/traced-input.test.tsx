@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { mulberry32, pick, randomInt, randomNumber, type Random } from '../../engines/__fixtures__/engine-fixtures'
-import { parseNumberText } from '../../hooks/use-traced-draft'
+import { commaReadingWarning, parseNumberText } from '../../hooks/use-traced-draft'
 import type { Currency, TracedValue } from '../../schema/traced'
 import { formatNumber } from '../format'
 import { Stat } from './stat'
@@ -126,17 +126,27 @@ describe('display to edit round trip', () => {
     }
   })
 
-  it('refuses grouped display text pasted into the value box, or reads it within display rounding, never a thousandfold misread', () => {
+  it('refuses grouped display text pasted into the value box, reads it within display rounding, or names the misread: never a silent thousandfold error', () => {
     expect(parseNumberText(formatNumber(1200.5, 'EUR')).kind).toBe('invalid')
-    expect(parseNumberText(formatNumber(1234)).kind).toBe('invalid')
+    // Plain display groups a whole number with one comma, which reads as a decimal and says so.
+    expect(parseNumberText(formatNumber(1234))).toEqual({ kind: 'number', value: 1.234, warning: commaReadingWarning(1.234, 1234) })
+    let warned = 0
     for (const figure of figures()) {
       const shown = formatNumber(figure.value, figure.currency)
       const parsed = parseNumberText(shown)
-      if (parsed.kind === 'number') {
-        expect(Math.abs(parsed.value - figure.value), `${shown} for ${String(figure.value)}`).toBeLessThanOrEqual(0.005 + 1e-9)
+      const label = `${shown} for ${String(figure.value)}`
+      if (parsed.kind !== 'number') {
+        expect(parsed.kind, label).toBe('invalid')
+      } else if (parsed.warning === null) {
+        expect(Math.abs(parsed.value - figure.value), label).toBeLessThanOrEqual(0.005 + 1e-9)
       } else {
-        expect(parsed.kind, shown).toBe('invalid')
+        // The warning's other reading is the figure as it was shown.
+        warned++
+        const grouped = Number(shown.replace(',', ''))
+        expect(parsed.warning, label).toBe(commaReadingWarning(parsed.value, grouped))
+        expect(Math.abs(grouped - figure.value), label).toBeLessThanOrEqual(0.005 + 1e-9)
       }
     }
+    expect(warned).toBeGreaterThan(0)
   })
 })
