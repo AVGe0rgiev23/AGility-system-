@@ -101,8 +101,15 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
   const assume = (traced: TracedValue): void => {
     if (!assumptions.includes(traced)) assumptions.push(traced)
   }
-  const show = (label: string, value: number, unit: string, source: Source, formula: string): void => {
-    breakdown.push({ label, value, unit, source, formula })
+  const show = (
+    label: string,
+    value: number,
+    unit: string,
+    source: Source,
+    formula: string,
+    audience: BreakdownRow['audience'] = 'client',
+  ): void => {
+    breakdown.push({ label, value, unit, source, formula, audience })
   }
 
   const processes = resolveLinked(opportunity.processIds, input.processes, (id) => {

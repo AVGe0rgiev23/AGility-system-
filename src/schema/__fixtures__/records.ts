@@ -163,6 +163,7 @@ export function scoringResult(): ScoringResult {
         unit: 'hours/month',
         source: 'client-stated',
         formula: '(120 × 12 × 2) / 60',
+        audience: 'client',
       },
     ],
     assumptions: [tracedHours()],
@@ -542,7 +543,7 @@ export function library(): Library {
 
 export function meta(): Meta {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     createdAt: '2026-09-01T08:00:00.000Z',
     lastMigratedAt: null,
     appVersion: '0.0.0',

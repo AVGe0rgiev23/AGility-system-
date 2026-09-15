@@ -41,6 +41,17 @@ describe('ScoringResultSchema', () => {
     expect(issuePaths(ScoringResultSchema, { ...result, breakdown })).toEqual(['breakdown.0.source'])
   })
 
+  it('defaults a breakdown row with no audience to client, and accepts no audience but client or internal', () => {
+    const [row] = scoringResult().breakdown
+    if (row === undefined) throw new Error('fixture has a breakdown row')
+    const { audience: _omitted, ...withoutAudience } = row
+    expect(ScoringResultSchema.parse({ ...scoringResult(), breakdown: [withoutAudience] }).breakdown[0]?.audience).toBe('client')
+    expect(issuePaths(ScoringResultSchema, { ...scoringResult(), breakdown: [{ ...row, audience: 'internal' }] })).toEqual([])
+    expect(issuePaths(ScoringResultSchema, { ...scoringResult(), breakdown: [{ ...row, audience: 'public' }] })).toEqual([
+      'breakdown.0.audience',
+    ])
+  })
+
   it('holds warnings as code and message objects, never bare strings', () => {
     const warning = { code: 'NO_PATTERN', message: 'No linked pattern' }
     expect(issuePaths(ScoringResultSchema, { ...scoringResult(), warnings: [warning] })).toEqual([])
@@ -73,6 +84,7 @@ describe('ScoringResultSchema', () => {
       'quick-win' | 'strategic' | 'fill-in' | 'avoid'
     >()
     expectTypeOf<ScoringResult['breakdown'][number]['source']>().toEqualTypeOf<Source>()
+    expectTypeOf<ScoringResult['breakdown'][number]['audience']>().toEqualTypeOf<'client' | 'internal'>()
     expectTypeOf<ScoringResult['assumptions']>().toEqualTypeOf<TracedValue[]>()
   })
 })

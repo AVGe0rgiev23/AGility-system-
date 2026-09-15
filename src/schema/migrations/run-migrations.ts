@@ -1,13 +1,16 @@
 import type { z } from 'zod'
 import { WholeStoreSchema, type WholeStore } from '../store'
 import { CURRENT_SCHEMA_VERSION } from '../version'
+import { migrateV1ToV2 } from './v1-to-v2'
 
 // Takes the whole store at version N and returns it at N + 1, including setting
 // meta.schemaVersion to N + 1. One file per bump in this folder, registered below.
 export type MigrateFn = (store: unknown) => unknown
 
-// Keyed by the version each migration upgrades from. Empty until the first bump.
-export const MIGRATIONS: Readonly<Record<number, MigrateFn>> = {}
+// Keyed by the version each migration upgrades from.
+export const MIGRATIONS: Readonly<Record<number, MigrateFn>> = {
+  1: migrateV1ToV2,
+}
 
 export interface MigrationChain {
   migrations: Readonly<Record<number, MigrateFn>>
@@ -26,7 +29,7 @@ export class MigrationError extends Error {
 
 // Brings a whole store from `from` up to the current schema version and validates it.
 // Pure: it never writes, so the caller replaces the stored data only when this returns.
-// `chain` exists so the step loop can be tested before the first real migration exists.
+// `chain` exists so the step loop can be tested against a fake chain.
 export function runMigrations(
   store: unknown,
   from: number,

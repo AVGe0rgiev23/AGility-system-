@@ -58,6 +58,9 @@ export const ScoringResultSchema = z.object({
       unit: z.string(),
       source: SourceSchema,
       formula: z.string(),
+      // Who may see the row. Documents filter on this flag and never on label text, so a
+      // ranking-only figure cannot reach a client through a renamed row.
+      audience: z.enum(['client', 'internal']).default('client'),
     }),
   ),
   assumptions: z.array(TracedValueSchema),
