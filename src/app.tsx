@@ -3,6 +3,7 @@ import { AppShell } from './ui/shell/app-shell'
 import { useRoute, type Route } from './ui/shell/router'
 import { StoreLoading, StoreNotices, StoreRefusal } from './ui/shell/store-status'
 import { PlaceholderView } from './ui/views/placeholder-view'
+import { PrimitivesView } from './ui/views/primitives-view'
 
 function Page({ route }: { route: Route }) {
   switch (route.name) {
@@ -13,7 +14,7 @@ function Page({ route }: { route: Route }) {
     case 'settings':
       return <PlaceholderView title="Settings" detail="The Settings screen is built in Stage 0, task 9." />
     case 'primitives':
-      return <PlaceholderView title="Primitives" detail="The primitives reference is not built yet." />
+      return <PrimitivesView />
     case 'not-found':
       return <PlaceholderView title="Not found" detail={`Nothing lives at '${route.path}'.`} />
   }
