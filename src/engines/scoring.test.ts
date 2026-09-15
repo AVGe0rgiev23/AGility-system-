@@ -521,7 +521,6 @@ describe('scoreOpportunity output shape', () => {
     const input = baseInput()
     input.opportunity.title = 'Renamed'
     input.opportunity.summary = 'Rewritten'
-    input.opportunity.selected = false
     input.opportunity.primaryPatternId = 'pat-crm-sync'
     input.opportunity.scoring = scoreOpportunity(baseInput())
     input.company.name = 'Renamed Ltd'

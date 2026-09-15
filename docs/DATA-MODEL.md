@@ -324,7 +324,6 @@ interface Opportunity {
 
   effortInputs: EffortInputs
   scoring: ScoringResult | null // cached, recomputed on inputsHash mismatch
-  selected: boolean             // included in the current scope
 }
 
 interface EffortInputs {
@@ -345,6 +344,10 @@ interface EffortInputs {
 
 **There is no `roi` field on Opportunity.** ROI is computed over the selected set
 and lives on `ProjectScope`. Clients buy projects, not line items.
+
+**There is no `selected` flag on Opportunity.** `ProjectScope.selectedOpportunityIds`
+is the only record of what is in scope. A second record of it could disagree with
+the first and price a different set from the one shown.
 
 ## Blueprint
 
@@ -383,7 +386,7 @@ interface BlueprintNode {
 
 ```ts
 interface ProjectScope {
-  selectedOpportunityIds: string[]
+  selectedOpportunityIds: string[]        // the only record of what is in scope
   deliveryModel: DeliveryModel
   deliverables: Deliverable[]
   exclusions: string[]
@@ -682,11 +685,24 @@ Why the less obvious rules exist:
 
 IndexedDB (Dexie), tables: `engagements`, `library`, `config`, `meta`.
 
+| Table | Holds | Key |
+|---|---|---|
+| `engagements` | one `Engagement` per record | its `id` |
+| `library` | the `Library` record | `library` |
+| `config` | the `Config` record, and the sync folder handle | `config`; `sync-folder-handle`, as named by `Config.storage.syncFolderHandleId` |
+| `meta` | the `Meta` record | `meta` |
+
+The folder handle is a browser object, not data. It is never exported or
+mirrored, and a whole-store replace leaves it where it is. Dexie's own structural
+version counts table and key changes only, and is unrelated to
+`Meta.schemaVersion`.
+
 Disk mirror:
 
 ```
 agility-os-data/
   .schema-version            single global version, matches Meta
+  meta.json
   config.json
   library/
     patterns.json
@@ -702,6 +718,13 @@ agility-os-data/
 ```
 
 Keep that folder as a private git repo.
+
+Files are pretty-printed JSON with a trailing newline, in schema field order, so
+git diffs stay readable. `<slug>` is the company name folded to lowercase ASCII
+letters, digits and hyphens, at most 40 characters, or `engagement` when nothing
+is left. `<shortid>` is the first 8 letters and digits of the engagement id,
+lowercased. `meta.json` is in the mirror so a restore from the folder can rebuild
+the whole store, `createdAt` and `lastMigratedAt` included.
 
 ## Migration rule
 

@@ -82,6 +82,12 @@ No engine reads the Library. Calibration and the pattern hours that scoring
 needs are passed in, and the caller pre-sums `advisoryBlueprintHours` from the
 selected opportunities' blueprints.
 
+The selected set is the opportunities named by `scope.selectedOpportunityIds`, in
+that order. That list is the only record of what is in scope (DATA-MODEL,
+Opportunity). An id with no opportunity has nothing to price and is skipped.
+Estimation, run cost and ROI run only when a scope exists. Scoring runs for every
+opportunity, selected or not, because the ranked table shows them all.
+
 `now` exists because engines may not call `Date.now()`, which lint bans: an
 engine that read the clock would give different output for the same input
 depending on when it ran. The caller passes the current time as an ISO string,

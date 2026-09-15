@@ -21,7 +21,9 @@ export const EffortInputsSchema = z.object({
 })
 export type EffortInputs = z.infer<typeof EffortInputsSchema>
 
-// No roi field: ROI is computed over the selected set and lives on ProjectScope.
+// No roi field: ROI is computed over the selected set and lives on ProjectScope. No selected
+// flag either: ProjectScope.selectedOpportunityIds is the only record of what is in scope, since
+// two records of it could disagree and price a different set from the one shown.
 export const OpportunitySchema = z.object({
   id: z.string(),
   processIds: z.array(z.string()),
@@ -35,6 +37,5 @@ export const OpportunitySchema = z.object({
   errorReductionPercent: TracedValueSchema,
   effortInputs: EffortInputsSchema,
   scoring: ScoringResultSchema.nullable(),
-  selected: z.boolean(),
 })
 export type Opportunity = z.infer<typeof OpportunitySchema>

@@ -24,6 +24,7 @@ export const PhaseSchema = z.object({
 export type Phase = z.infer<typeof PhaseSchema>
 
 export const ProjectScopeSchema = z.object({
+  // The single source of truth for what is in scope; the estimate, run cost and ROI cover exactly these.
   selectedOpportunityIds: z.array(z.string()),
   deliveryModel: DeliveryModelSchema,
   deliverables: z.array(DeliverableSchema),
