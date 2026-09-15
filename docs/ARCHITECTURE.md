@@ -267,11 +267,22 @@ element's title.
 - **Typed numbers:**
   - The dot form, including the exponent form `String(value)` produces, is
     accepted.
-  - A single comma is accepted as the decimal point when unambiguous:
-    `1200,50` is 1200.5.
-  - Refused as ambiguous, because a guess risks a thousandfold error: more than
-    one comma, a comma with a dot, or a comma followed by exactly three digits
-    (`1,200`).
+  - A single comma is always the decimal point: `1200,50` is 1200.5.
+  - A comma followed by exactly three digits is no exception. `1,200` is read as
+    1.2 and accepted, with an inline warning in the warn colour naming both
+    readings: "Read as 1.2, not 1200. Use 1200 or 1200.00 if the comma was a
+    thousands separator." The warning never blocks the value.
+    - **Why not refuse it?** Refusing would block a common European entry.
+    - **Why not decide by context,** such as whether the field was already
+      filled? The same keystrokes would then mean different numbers, and the
+      wrong one would surface in a proposal on exactly the edit that feels
+      trivial.
+    - **Consistency.** A number is never silently reinterpreted, the same rule
+      as the stored-unit warning. Stored values load as `String(value)`, so they
+      never trigger it.
+  - Refused as ambiguous, because it says nothing certain about which mark is
+    the decimal: more than one comma (`1,200,000`), or a comma with a dot
+    (`1.200,50`).
   - Parsing keeps the exact number. The editable text is `String(value)`, never
     display output, so any stored value can be edited and read back unchanged.
 - **A stored unit the field does not record** is shown as a warning. The next
