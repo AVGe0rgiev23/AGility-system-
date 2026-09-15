@@ -61,8 +61,8 @@ export interface StoreHandle {
   // The persistent banner text for every sync state short of a healthy connection.
   syncWarning: string | null
   // Both need a user gesture: the browser grants folder permission only from one.
-  connect(): Promise<void>
-  reconnect(): Promise<void>
+  connect: () => Promise<void>
+  reconnect: () => Promise<void>
 }
 
 export function useStore(runtime: StoreRuntime): StoreHandle {
