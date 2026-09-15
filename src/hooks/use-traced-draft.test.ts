@@ -4,9 +4,7 @@ import { TracedValueSchema, type TracedValue } from '../schema/traced'
 import {
   AMBIGUOUS_NUMBER,
   assembleDraft,
-  commaReadingWarning,
   draftFromValue,
-  draftWarnings,
   editDraft,
   initialDraftState,
   NOT_A_NUMBER,
@@ -86,25 +84,10 @@ describe('parseNumberText, comma decimal', () => {
     expect(parsedValue('3,14159265358979')).toBe(3.14159265358979)
   })
 
-  it('reads a comma followed by exactly three digits as the decimal point too, and warns with the other reading', () => {
-    expect(parseNumberText('1,200')).toEqual({
-      kind: 'number',
-      value: 1.2,
-      warning: 'Read as 1.2, not 1200. Use 1200 or 1200.00 if the comma was a thousands separator.',
-    })
-    expect(parseNumberText('0,125')).toEqual({ kind: 'number', value: 0.125, warning: commaReadingWarning(0.125, 125) })
-    expect(parseNumberText('12,345')).toEqual({ kind: 'number', value: 12.345, warning: commaReadingWarning(12.345, 12345) })
-    expect(parseNumberText('999,999')).toEqual({ kind: 'number', value: 999.999, warning: commaReadingWarning(999.999, 999999) })
-    expect(parseNumberText(' -1,200 ')).toEqual({ kind: 'number', value: -1.2, warning: commaReadingWarning(-1.2, -1200) })
-  })
-
-  it('warns only when a whole number precedes the comma and the two readings differ', () => {
-    expect(parseNumberText(',125')).toEqual({ kind: 'number', value: 0.125, warning: null })
-    expect(parseNumberText('0,000')).toEqual({ kind: 'number', value: 0, warning: null })
-    for (const text of ['1,2', '1,20', '1,2000', '1200,50']) {
-      expect(parseNumberText(text), text).toMatchObject({ kind: 'number', warning: null })
+  it('refuses a comma followed by exactly three digits, which reads as a thousands separator in English', () => {
+    for (const text of ['1,200', '0,125', '12,345', '-1,200', '999,999']) {
+      expect(parseNumberText(text), text).toEqual({ kind: 'invalid', message: AMBIGUOUS_NUMBER })
     }
-    expect(parseNumberText('1200')).toEqual({ kind: 'number', value: 1200, warning: null })
   })
 
   it('refuses more than one comma', () => {
@@ -188,7 +171,7 @@ describe('assembleDraft', () => {
 
   it('refuses a value with no source', () => {
     expect(assembleDraft(draft({ text: '4' }), MINUTES, null, true)).toEqual({ kind: 'invalid', issues: [SOURCE_REQUIRED] })
-    expect(assembleDraft(draft({ text: '1,200,000' }), MINUTES, null, true)).toEqual({ kind: 'invalid', issues: [AMBIGUOUS_NUMBER, SOURCE_REQUIRED] })
+    expect(assembleDraft(draft({ text: '1,200' }), MINUTES, null, true)).toEqual({ kind: 'invalid', issues: [AMBIGUOUS_NUMBER, SOURCE_REQUIRED] })
   })
 
   it("shows the schema's own message for a negative value", () => {
@@ -253,21 +236,6 @@ describe('unitMismatch', () => {
   })
 })
 
-describe('draftWarnings', () => {
-  it('lists a stored-unit mismatch and a number read one of two ways, and nothing otherwise', () => {
-    const hours: TracedValue = { value: 2, unit: 'hours', source: 'measured' }
-    expect(draftWarnings('2', null, MINUTES)).toEqual([])
-    expect(draftWarnings('1,200', null, MINUTES)).toEqual([commaReadingWarning(1.2, 1200)])
-    expect(draftWarnings('2', hours, MINUTES)).toEqual([unitMismatch(hours, MINUTES)])
-    expect(draftWarnings('1,200', hours, MINUTES)).toEqual([unitMismatch(hours, MINUTES), commaReadingWarning(1.2, 1200)])
-  })
-
-  it('never warns about a stored value loaded into the draft, since it loads as String(value)', () => {
-    const stored: TracedValue = { value: 1.2, unit: 'minutes', source: 'measured' }
-    expect(draftWarnings(draftFromValue(stored, MINUTES).text, stored, MINUTES)).toEqual([])
-  })
-})
-
 describe('receiveValue and editDraft', () => {
   const stored: TracedValue = { value: 12, unit: 'minutes', source: 'measured' }
 
@@ -277,28 +245,9 @@ describe('receiveValue and editDraft', () => {
   })
 
   it('emits nothing for an invalid edit, and keeps the text', () => {
-    const { state, emit } = editDraft(initialDraftState(stored, MINUTES), { text: '1.200,50' }, MINUTES, stored, true)
+    const { state, emit } = editDraft(initialDraftState(stored, MINUTES), { text: '1,200' }, MINUTES, stored, true)
     expect(emit).toBeUndefined()
-    expect(state.draft.text).toBe('1.200,50')
-  })
-
-  it('emits a comma reading that carries a warning: the warning never blocks', () => {
-    const { emit } = editDraft(initialDraftState(stored, MINUTES), { text: '1,200' }, MINUTES, stored, true)
-    expect(emit).toEqual({ value: 1.2, unit: 'minutes', source: 'measured' })
-  })
-
-  it('reads the same keystrokes as the same number whether or not the field already held a value', () => {
-    const typed = { text: '1,200', source: 'measured' as const }
-    const blank = editDraft(initialDraftState(null, MINUTES), typed, MINUTES, null, true)
-    const prefilled = editDraft(initialDraftState(stored, MINUTES), typed, MINUTES, stored, true)
-    const prefilledLarge = editDraft(
-      initialDraftState({ value: 1200, unit: 'minutes', source: 'measured' }, MINUTES),
-      typed,
-      MINUTES,
-      { value: 1200, unit: 'minutes', source: 'measured' },
-      true,
-    )
-    for (const result of [blank, prefilled, prefilledLarge]) expect(result.emit).toEqual({ value: 1.2, unit: 'minutes', source: 'measured' })
+    expect(state.draft.text).toBe('1,200')
   })
 
   it('emits nothing when the edit stands for the value the parent already holds', () => {
@@ -327,9 +276,9 @@ describe('receiveValue and editDraft', () => {
   it('keeps an invalid draft typed after an emit, when the parent then echoes that emit', () => {
     const first = editDraft(initialDraftState(stored, MINUTES), { text: '15' }, MINUTES, stored, true)
     const emitted = { value: 15, unit: 'minutes', source: 'measured' } as const
-    const second = editDraft(first.state, { text: '15.000,5' }, MINUTES, stored, true)
+    const second = editDraft(first.state, { text: '15,000' }, MINUTES, stored, true)
     expect(second.emit).toBeUndefined()
-    expect(receiveValue(second.state, emitted, MINUTES).draft.text).toBe('15.000,5')
+    expect(receiveValue(second.state, emitted, MINUTES).draft.text).toBe('15,000')
   })
 
   it('replaces the draft and clears touched when the value changes from outside', () => {
@@ -403,20 +352,19 @@ describe('properties', () => {
     }
   })
 
-  it('reads a comma decimal exactly as the same digits with a point, warning exactly when three digits could be a group', () => {
+  it('reads a comma decimal exactly as the same digits with a point, unless three digits follow the comma', () => {
     const random = mulberry32(0xc0aa)
-    let warned = 0
     for (let index = 0; index < CASES; index++) {
       const whole = String(randomInt(random, 0, 1_000_000))
       const decimals = Array.from({ length: randomInt(random, 0, 8) }, () => String(randomInt(random, 0, 9))).join('')
       const text = `${whole},${decimals}`
-      const value = Number(`${whole}.${decimals}`)
-      const grouped = Number(`${whole}${decimals}`)
-      const warning = decimals.length === 3 && value !== grouped ? commaReadingWarning(value, grouped) : null
-      if (warning !== null) warned++
-      expect(parseNumberText(text), text).toEqual({ kind: 'number', value, warning })
+      const parsed = parseNumberText(text)
+      if (decimals.length === 3) {
+        expect(parsed, text).toEqual({ kind: 'invalid', message: AMBIGUOUS_NUMBER })
+      } else {
+        expect(parsed, text).toEqual({ kind: 'number', value: Number(`${whole}.${decimals}`) })
+      }
     }
-    expect(warned).toBeGreaterThan(0)
   })
 
   it('loads any valid value that fits its field into a draft that assembles back to it unchanged', () => {
