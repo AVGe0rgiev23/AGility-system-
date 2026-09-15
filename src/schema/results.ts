@@ -5,6 +5,38 @@ import { SourceSchema, TracedValueSchema } from './traced'
 // Engine results are cached on records but never authoritative: a mismatched
 // inputsHash triggers a recompute. They are still validated on every read.
 
+// Each engine warns from a fixed vocabulary (ENGINES), so screens and documents act on the
+// code and never parse the message, which is prose for Alex to read.
+export const ScoringWarningCodeSchema = z.enum([
+  'MISSING_PROCESS',
+  'MISSING_PATTERN',
+  'NO_PROCESSES',
+  'NO_HOURLY_COST',
+  'NON_HOURLY_COST_UNIT',
+  'NO_PATTERN',
+  'LOW_CONFIDENCE',
+])
+export type ScoringWarningCode = z.infer<typeof ScoringWarningCodeSchema>
+
+export const RunCostWarningCodeSchema = z.enum([
+  'MISSING_USAGE_FORMULA',
+  'AGENCY_COST_UNDER_CLIENT_OWNED',
+  'RETAINER_MARGIN_THIN',
+  'RETAINER_NOT_SET',
+])
+export type RunCostWarningCode = z.infer<typeof RunCostWarningCodeSchema>
+
+export const ROIWarningCodeSchema = z.enum([
+  'EMPTY_SCOPE',
+  'NO_IMPLEMENTATION_COST',
+  'NO_PAYBACK',
+  'PAYBACK_TOO_LONG',
+  'LOW_CONFIDENCE',
+  'RUN_COST_EATS_CASE',
+  'DEFAULT_COST',
+])
+export type ROIWarningCode = z.infer<typeof ROIWarningCodeSchema>
+
 export const ScoringResultSchema = z.object({
   // EUR, unweighted. The only value figure that may reach a client.
   annualValue: z.number(),
@@ -29,7 +61,7 @@ export const ScoringResultSchema = z.object({
     }),
   ),
   assumptions: z.array(TracedValueSchema),
-  warnings: z.array(z.string()),
+  warnings: z.array(z.object({ code: ScoringWarningCodeSchema, message: z.string() })),
   inputsHash: z.string(),
   computedAt: z.string(),
 })
@@ -91,7 +123,7 @@ export const RunCostResultSchema = z.object({
   clientMonthly: z.number(),
   agencyMonthly: z.number(),
   agencyAnnual: z.number(),
-  warnings: z.array(z.string()),
+  warnings: z.array(z.object({ code: RunCostWarningCodeSchema, message: z.string() })),
   inputsHash: z.string(),
   computedAt: z.string(),
 })
@@ -116,7 +148,7 @@ export const ROIResultSchema = z.object({
   annualRunCost: z.number(),
   assumptions: z.array(TracedValueSchema),
   lowestConfidence: z.number(),
-  warnings: z.array(z.string()),
+  warnings: z.array(z.object({ code: ROIWarningCodeSchema, message: z.string() })),
   inputsHash: z.string(),
   computedAt: z.string(),
 })

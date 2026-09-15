@@ -12,8 +12,11 @@ import {
   EstimateFlagSchema,
   EstimateResultSchema,
   ROIResultSchema,
+  ROIWarningCodeSchema,
   RunCostResultSchema,
+  RunCostWarningCodeSchema,
   ScoringResultSchema,
+  ScoringWarningCodeSchema,
   type EstimateResult,
   type ROIResult,
   type RunCostResult,
@@ -36,6 +39,28 @@ describe('ScoringResultSchema', () => {
     const result = scoringResult()
     const breakdown = [{ ...result.breakdown[0], source: 'hunch' }]
     expect(issuePaths(ScoringResultSchema, { ...result, breakdown })).toEqual(['breakdown.0.source'])
+  })
+
+  it('holds warnings as code and message objects, never bare strings', () => {
+    const warning = { code: 'NO_PATTERN', message: 'No linked pattern' }
+    expect(issuePaths(ScoringResultSchema, { ...scoringResult(), warnings: [warning] })).toEqual([])
+    expect(issuePaths(ScoringResultSchema, { ...scoringResult(), warnings: ['NO_PATTERN: No linked pattern'] })).toEqual([
+      'warnings.0',
+    ])
+  })
+
+  it('accepts only the scoring warning codes', () => {
+    expect(ScoringWarningCodeSchema.options).toEqual([
+      'MISSING_PROCESS',
+      'MISSING_PATTERN',
+      'NO_PROCESSES',
+      'NO_HOURLY_COST',
+      'NON_HOURLY_COST_UNIT',
+      'NO_PATTERN',
+      'LOW_CONFIDENCE',
+    ])
+    const warnings = [{ code: 'RETAINER_NOT_SET', message: 'belongs to run cost' }]
+    expect(issuePaths(ScoringResultSchema, { ...scoringResult(), warnings })).toEqual(['warnings.0.code'])
   })
 
   it('requires inputsHash and computedAt for the derived-data policy', () => {
@@ -113,6 +138,20 @@ describe('RunCostResultSchema', () => {
     expect(RunCostResultSchema.parse(runCostResult())).toEqual(runCostResult())
   })
 
+  it('accepts only the run-cost warning codes, as objects', () => {
+    expect(RunCostWarningCodeSchema.options).toEqual([
+      'MISSING_USAGE_FORMULA',
+      'AGENCY_COST_UNDER_CLIENT_OWNED',
+      'RETAINER_MARGIN_THIN',
+      'RETAINER_NOT_SET',
+    ])
+    expect(issuePaths(RunCostResultSchema, { ...runCostResult(), warnings: ['RETAINER_NOT_SET: no retainer'] })).toEqual([
+      'warnings.0',
+    ])
+    const warnings = [{ code: 'NO_PAYBACK', message: 'belongs to ROI' }]
+    expect(issuePaths(RunCostResultSchema, { ...runCostResult(), warnings })).toEqual(['warnings.0.code'])
+  })
+
   it('requires a row for every delivery model', () => {
     const result = runCostResult()
     const { hybrid: _omitted, ...twoModels } = result.perModel
@@ -130,6 +169,21 @@ describe('RunCostResultSchema', () => {
 describe('ROIResultSchema', () => {
   it('accepts a full result, including a null payback', () => {
     expect(ROIResultSchema.parse(roiResult())).toEqual(roiResult())
+  })
+
+  it('accepts only the ROI warning codes, as objects', () => {
+    expect(ROIWarningCodeSchema.options).toEqual([
+      'EMPTY_SCOPE',
+      'NO_IMPLEMENTATION_COST',
+      'NO_PAYBACK',
+      'PAYBACK_TOO_LONG',
+      'LOW_CONFIDENCE',
+      'RUN_COST_EATS_CASE',
+      'DEFAULT_COST',
+    ])
+    expect(issuePaths(ROIResultSchema, { ...roiResult(), warnings: ['NO_PAYBACK: stop'] })).toEqual(['warnings.0'])
+    const warnings = [{ code: 'DEFAULT_HOURLY_COST', message: 'renamed to DEFAULT_COST' }]
+    expect(issuePaths(ROIResultSchema, { ...roiResult(), warnings })).toEqual(['warnings.0.code'])
   })
 
   it('requires all three scenarios', () => {

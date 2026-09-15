@@ -3,7 +3,7 @@ import { estimateResult, opportunity, roiResult, runCostResult, scoringResult, t
 import { defaultConfig } from '../schema/config'
 import type { ROIResult } from '../schema/results'
 import type { TracedValue } from '../schema/traced'
-import { mulberry32, randomROIInput } from './__fixtures__/engine-fixtures'
+import { mulberry32, randomROIInput, warningCodes } from './__fixtures__/engine-fixtures'
 import type { ScoredOpportunity } from './estimate'
 import { computeROI, RUN_COST_SHARE_THRESHOLD, type ROIInput } from './roi'
 
@@ -140,7 +140,7 @@ describe('computeROI (§4)', () => {
     const exceeds = computeROI(baseInput({ runCost: withRunCost(2000, 0) }))
     expect(exceeds.scenarios.expected.paybackMonths).toBeNull()
     expect(exceeds.scenarios.expected.netAnnualBenefit).toBe(18240 - 24000)
-    expect(exceeds.warnings).toContainEqual(expect.stringMatching(/^NO_PAYBACK: /))
+    expect(warningCodes(exceeds)).toContain('NO_PAYBACK')
     const equals = computeROI(baseInput({ runCost: withRunCost(1520, 0) }))
     expect(equals.scenarios.expected.paybackMonths).toBeNull()
   })
@@ -153,7 +153,7 @@ describe('computeROI (§4)', () => {
       expect(scenario.paybackMonths).toBe(0)
       expect(Number.isFinite(scenario.npv)).toBe(true)
     }
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^NO_IMPLEMENTATION_COST: /))
+    expect(warningCodes(result)).toContain('NO_IMPLEMENTATION_COST')
   })
 
   it('reports the empty scope rather than a low-confidence case', () => {
@@ -161,8 +161,8 @@ describe('computeROI (§4)', () => {
     expect(result.scenarios.expected.grossAnnualValue).toBe(0)
     expect(result.lowestConfidence).toBe(0)
     expect(result.assumptions).toEqual([])
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^EMPTY_SCOPE: /))
-    expect(result.warnings).not.toContainEqual(expect.stringMatching(/^LOW_CONFIDENCE: /))
+    expect(warningCodes(result)).toContain('EMPTY_SCOPE')
+    expect(warningCodes(result)).not.toContain('LOW_CONFIDENCE')
   })
 
   it('lists each distinct assumption once across the selected set', () => {
@@ -181,26 +181,26 @@ describe('computeROI warnings (§4)', () => {
     config.roi.paybackWarningMonths = 24
     const slow = computeROI(baseInput({ scored: [scored({ annualValue: 1200 })], config }))
     expect(slow.scenarios.expected.paybackMonths).toBeGreaterThan(24)
-    expect(slow.warnings).toContainEqual(expect.stringMatching(/^PAYBACK_TOO_LONG: /))
+    expect(warningCodes(slow)).toContain('PAYBACK_TOO_LONG')
     const exact = computeROI(baseInput({ scored: [scored({ annualValue: 1189.2725 + 60 })], config }))
     expect(exact.scenarios.expected.paybackMonths).toBeCloseTo(24, 8)
-    expect(exact.warnings).not.toContainEqual(expect.stringMatching(/^PAYBACK_TOO_LONG: /))
+    expect(warningCodes(exact)).not.toContain('PAYBACK_TOO_LONG')
   })
 
   it('warns when the lowest confidence is below 50', () => {
     const result = computeROI(baseInput({ scored: [scored({ id: 'a', confidence: 90 }), scored({ id: 'b', confidence: 49 })] }))
     expect(result.lowestConfidence).toBe(49)
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^LOW_CONFIDENCE: /))
+    expect(warningCodes(result)).toContain('LOW_CONFIDENCE')
     const edge = computeROI(baseInput({ scored: [scored({ confidence: 50 })] }))
-    expect(edge.warnings).not.toContainEqual(expect.stringMatching(/^LOW_CONFIDENCE: /))
+    expect(warningCodes(edge)).not.toContain('LOW_CONFIDENCE')
   })
 
   it('warns when the running cost exceeds 30% of the gross value, not at 30%', () => {
     // 30% of €18,240 is €5,472/year, or €456/month.
     const eats = computeROI(baseInput({ runCost: withRunCost(457, 0) }))
-    expect(eats.warnings).toContainEqual(expect.stringMatching(/^RUN_COST_EATS_CASE: /))
+    expect(warningCodes(eats)).toContain('RUN_COST_EATS_CASE')
     const edge = computeROI(baseInput({ runCost: withRunCost(456, 0) }))
-    expect(edge.warnings).not.toContainEqual(expect.stringMatching(/^RUN_COST_EATS_CASE: /))
+    expect(warningCodes(edge)).not.toContain('RUN_COST_EATS_CASE')
   })
 
   it('warns when any money figure among the assumptions is a default, telling money by its currency', () => {
@@ -208,15 +208,15 @@ describe('computeROI warnings (§4)', () => {
     const perError: TracedValue = { value: 40, unit: 'per error', currency: 'GBP', source: 'default' }
     for (const madeUp of [hourly, perError]) {
       const result = computeROI(baseInput({ scored: [scored({ assumptions: [tracedHours(), madeUp] })] }))
-      expect(result.warnings, madeUp.unit).toContainEqual(expect.stringMatching(/^DEFAULT_COST: /))
+      expect(warningCodes(result), madeUp.unit).toContain('DEFAULT_COST')
     }
     const estimated: TracedValue = { ...hourly, source: 'estimated' }
     const fine = computeROI(baseInput({ scored: [scored({ assumptions: [estimated] })] }))
-    expect(fine.warnings).not.toContainEqual(expect.stringMatching(/^DEFAULT_COST: /))
+    expect(warningCodes(fine)).not.toContain('DEFAULT_COST')
     // No currency means not money, whatever the unit says.
     const notMoney: TracedValue = { value: 80, unit: 'EUR-ish percent', source: 'default' }
     const result = computeROI(baseInput({ scored: [scored({ assumptions: [notMoney] })] }))
-    expect(result.warnings).not.toContainEqual(expect.stringMatching(/^DEFAULT_COST: /))
+    expect(warningCodes(result)).not.toContain('DEFAULT_COST')
   })
 })
 
@@ -253,7 +253,7 @@ describe('computeROI output shape', () => {
     input.estimate.indicativePrice = 1
     input.estimate.computedAt = '2030-01-01T00:00:00.000Z'
     input.runCost.computedAt = '2030-01-01T00:00:00.000Z'
-    input.runCost.warnings = ['ignored']
+    input.runCost.warnings = [{ code: 'RETAINER_NOT_SET', message: 'ignored' }]
     input.config.pricing.targetHourlyRate = 90
     input.config.storage.lastSyncAt = NOW
     expect(computeROI(input).inputsHash).toBe(base)

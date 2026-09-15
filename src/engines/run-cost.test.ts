@@ -3,7 +3,7 @@ import { runCostLineItem, usageRunCostLineItem } from '../schema/__fixtures__/re
 import type { DeliveryModel } from '../schema/company'
 import { defaultConfig } from '../schema/config'
 import type { RunCostLineItem } from '../schema/run-cost'
-import { mulberry32, randomInt, randomRunCostItem } from './__fixtures__/engine-fixtures'
+import { mulberry32, randomInt, randomRunCostItem, warningCodes } from './__fixtures__/engine-fixtures'
 import { computeRunCost, itemMonthlyCost, RETAINER_MARGIN_THRESHOLD, type RunCostInput } from './run-cost'
 
 const NOW = '2026-09-15T10:00:00.000Z'
@@ -110,37 +110,39 @@ describe('computeRunCost warnings (§3)', () => {
     const items = [agencyItem(20)]
     for (const deliveryModel of MODELS) {
       const result = computeRunCost(baseInput({ items, deliveryModel, supportRetainerMonthly: 500 }))
-      expect(result.warnings, deliveryModel).toContainEqual(expect.stringMatching(/^AGENCY_COST_UNDER_CLIENT_OWNED: /))
+      expect(warningCodes(result), deliveryModel).toContain('AGENCY_COST_UNDER_CLIENT_OWNED')
     }
-    expect(computeRunCost(baseInput({ deliveryModel: 'client-owned' })).warnings).not.toContainEqual(
-      expect.stringMatching(/^AGENCY_COST_UNDER_CLIENT_OWNED: /),
+    expect(warningCodes(computeRunCost(baseInput({ deliveryModel: 'client-owned' })))).not.toContain(
+      'AGENCY_COST_UNDER_CLIENT_OWNED',
     )
   })
 
   it('warns RETAINER_MARGIN_THIN when agency cost exceeds 40% of the retainer, on the selected model', () => {
     // €350/month → €4,200/year; 40% is €1,680/year, or €140/month.
     const thin = computeRunCost(baseInput({ items: [agencyItem(150)], supportRetainerMonthly: 350 }))
-    expect(thin.warnings).toContainEqual(expect.stringMatching(/^RETAINER_MARGIN_THIN: /))
+    expect(warningCodes(thin)).toContain('RETAINER_MARGIN_THIN')
     const atThreshold = computeRunCost(baseInput({ items: [agencyItem(140)], supportRetainerMonthly: 350 }))
-    expect(atThreshold.warnings).not.toContainEqual(expect.stringMatching(/^RETAINER_MARGIN_THIN: /))
+    expect(warningCodes(atThreshold)).not.toContain('RETAINER_MARGIN_THIN')
     const clientPays = computeRunCost(baseInput({ deliveryModel: 'hybrid', supportRetainerMonthly: 350, items: [runCostLineItem()] }))
-    expect(clientPays.warnings).not.toContainEqual(expect.stringMatching(/^RETAINER_MARGIN_THIN: /))
+    expect(warningCodes(clientPays)).not.toContain('RETAINER_MARGIN_THIN')
   })
 
   it('warns RETAINER_NOT_SET only when the agency carries cost and no retainer is set', () => {
     const unset = computeRunCost(baseInput())
-    expect(unset.warnings).toContainEqual(expect.stringMatching(/^RETAINER_NOT_SET: /))
-    expect(unset.warnings).not.toContainEqual(expect.stringMatching(/^RETAINER_MARGIN_THIN: /))
+    expect(warningCodes(unset)).toContain('RETAINER_NOT_SET')
+    expect(warningCodes(unset)).not.toContain('RETAINER_MARGIN_THIN')
     const nothingToCarry = computeRunCost(baseInput({ deliveryModel: 'client-owned' }))
-    expect(nothingToCarry.warnings).not.toContainEqual(expect.stringMatching(/^RETAINER_NOT_SET: /))
+    expect(warningCodes(nothingToCarry)).not.toContain('RETAINER_NOT_SET')
     const set = computeRunCost(baseInput({ supportRetainerMonthly: 350 }))
-    expect(set.warnings).not.toContainEqual(expect.stringMatching(/^RETAINER_NOT_SET: /))
+    expect(warningCodes(set)).not.toContain('RETAINER_NOT_SET')
   })
 
   it('warns about a usage-based item with no formula', () => {
     const { usageFormula: _omitted, ...withoutFormula } = usageRunCostLineItem()
     const result = computeRunCost(baseInput({ items: [withoutFormula] }))
-    expect(result.warnings).toContainEqual(expect.stringMatching(/^MISSING_USAGE_FORMULA: .*Email classification model/))
+    expect(result.warnings.find((warning) => warning.code === 'MISSING_USAGE_FORMULA')?.message).toContain(
+      'Email classification model',
+    )
     expect(result.agencyMonthly).toBe(0)
   })
 })

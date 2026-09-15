@@ -52,6 +52,11 @@ export function mulberry32(seed: number): () => number {
 
 export type Random = () => number
 
+// The codes a result warned with, so tests assert on the vocabulary and never on message prose.
+export function warningCodes(result: { warnings: readonly { code: string }[] }): string[] {
+  return result.warnings.map((warning) => warning.code)
+}
+
 export function randomInt(random: Random, min: number, max: number): number {
   return min + Math.floor(random() * (max - min + 1))
 }

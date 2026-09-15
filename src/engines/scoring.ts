@@ -3,7 +3,7 @@ import type { Config } from '../schema/config'
 import type { Pattern } from '../schema/library'
 import type { Opportunity } from '../schema/opportunity'
 import type { Process } from '../schema/process'
-import type { ScoringResult } from '../schema/results'
+import type { ScoringResult, ScoringWarningCode } from '../schema/results'
 import type { Source, TracedValue } from '../schema/traced'
 import { fmt } from './format'
 import { hashInputs } from './inputs-hash'
@@ -90,7 +90,10 @@ function clampScore(score: number): number {
 export function scoreOpportunity(input: ScoringInput): ScoringResult {
   const { opportunity, company, config, now } = input
   const eur = config.agencyCurrency
-  const warnings: string[] = []
+  const warnings: ScoringResult['warnings'] = []
+  const warn = (code: ScoringWarningCode, message: string): void => {
+    warnings.push({ code, message })
+  }
   const breakdown: BreakdownRow[] = []
   const assumptions: TracedValue[] = []
   // One entry per TracedValue object, so a company rate shared by several processes is one
@@ -103,13 +106,13 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
   }
 
   const processes = resolveLinked(opportunity.processIds, input.processes, (id) => {
-    warnings.push(`MISSING_PROCESS: linked process '${id}' was not supplied, so it contributes no value`)
+    warn('MISSING_PROCESS', `Linked process '${id}' was not supplied, so it contributes no value`)
   })
   const patterns = resolveLinked(opportunity.patternIds, input.patterns, (id) => {
-    warnings.push(`MISSING_PATTERN: linked pattern '${id}' was not supplied, so its hours are not counted`)
+    warn('MISSING_PATTERN', `Linked pattern '${id}' was not supplied, so its hours are not counted`)
   })
   if (processes.length === 0) {
-    warnings.push('NO_PROCESSES: no linked process, so the annual value is 0')
+    warn('NO_PROCESSES', 'No linked process, so the annual value is 0')
   }
 
   // §1.1 Value
@@ -149,8 +152,9 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     const cost = process.roleHourlyCost ?? company.blendedHourlyCost
     if (cost === null) {
       everyHourlyCostClientStated = false
-      warnings.push(
-        `NO_HOURLY_COST: '${process.name}' has no role hourly cost and the company has no blended hourly cost, so its labour value is 0`,
+      warn(
+        'NO_HOURLY_COST',
+        `'${process.name}' has no role hourly cost and the company has no blended hourly cost, so its labour value is 0`,
       )
       show(`${process.name}: effective hourly cost`, 0, `${eur}/hour`, 'default', 'no hourly cost available')
     } else {
@@ -158,8 +162,9 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
       if (cost.source !== 'client-stated') everyHourlyCostClientStated = false
       // Without a currency the figure is not money, yet it is still multiplied by hours as if it were.
       if (cost.currency === undefined) {
-        warnings.push(
-          `NON_HOURLY_COST_UNIT: the hourly cost for '${process.name}' carries no currency, so it is not a money figure and is used as ${eur}; check the figure`,
+        warn(
+          'NON_HOURLY_COST_UNIT',
+          `The hourly cost for '${process.name}' carries no currency, so it is not a money figure and is used as ${eur}; check the figure`,
         )
       }
       const costEur = toAgencyCurrency(cost, config)
@@ -276,7 +281,7 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
 
   const patternLinked = patterns.length > 0
   if (!patternLinked) {
-    warnings.push('NO_PATTERN: no linked pattern, so build hours start from config.estimation.fallbackPatternHours')
+    warn('NO_PATTERN', 'No linked pattern, so build hours start from config.estimation.fallbackPatternHours')
   }
   const baseHours = patternLinked
     ? patterns.reduce((sum, pattern) => sum + pattern.baseHours, 0)
@@ -328,8 +333,9 @@ export function scoreOpportunity(input: ScoringInput): ScoringResult {
     `${CONFIDENCE_MAX} − ${CONFIDENCE_PENALTIES.defaultSource} × ${defaults} (default) − ${CONFIDENCE_PENALTIES.estimatedSource} × ${estimates} (estimated) − ${noPatternPenalty} (${patternLinked ? 'pattern linked' : 'no pattern linked'}) − ${hourlyCostPenalty} (hourly cost ${everyHourlyCostClientStated ? 'client-stated' : 'not client-stated'}), clamped to [${CONFIDENCE_MIN}, ${CONFIDENCE_MAX}]`,
   )
   if (confidence < LOW_CONFIDENCE_THRESHOLD) {
-    warnings.push(
-      `LOW_CONFIDENCE: confidence ${confidence} is below ${LOW_CONFIDENCE_THRESHOLD}; warn before this opportunity reaches a proposal`,
+    warn(
+      'LOW_CONFIDENCE',
+      `Confidence ${confidence} is below ${LOW_CONFIDENCE_THRESHOLD}; warn before this opportunity reaches a proposal`,
     )
   }
 

@@ -1,5 +1,5 @@
 import type { Config } from '../schema/config'
-import type { EstimateResult, ROIResult, RunCostResult } from '../schema/results'
+import type { EstimateResult, ROIResult, ROIWarningCode, RunCostResult } from '../schema/results'
 import type { TracedValue } from '../schema/traced'
 import type { ScoredOpportunity } from './estimate'
 import { fmt } from './format'
@@ -71,35 +71,41 @@ export function computeROI(input: ROIInput): ROIResult {
 
   // Evaluated on the expected scenario: §4 defines the warnings on the base formulas, and the
   // scenarios are the same formulas over a scaled gross value.
-  const warnings: string[] = []
+  const warnings: ROIResult['warnings'] = []
+  const warn = (code: ROIWarningCode, message: string): void => {
+    warnings.push({ code, message })
+  }
   if (scored.length === 0) {
-    warnings.push('EMPTY_SCOPE: no opportunity is selected, so there is no case to make')
+    warn('EMPTY_SCOPE', 'No opportunity is selected, so there is no case to make')
   }
   if (implementationCost === 0) {
-    warnings.push('NO_IMPLEMENTATION_COST: the estimate prices at 0, so the return ratios are reported as 0')
+    warn('NO_IMPLEMENTATION_COST', 'The estimate prices at 0, so the return ratios are reported as 0')
   }
   const expected = scenarios.expected
   if (expected.paybackMonths === null) {
-    warnings.push(
-      `NO_PAYBACK: the running cost of ${fmt(annualRunCost)} ${currency}/year meets or exceeds the value of ${fmt(grossAnnualValue)} ${currency}/year; stop`,
+    warn(
+      'NO_PAYBACK',
+      `The running cost of ${fmt(annualRunCost)} ${currency}/year meets or exceeds the value of ${fmt(grossAnnualValue)} ${currency}/year; stop`,
     )
   } else if (expected.paybackMonths > roi.paybackWarningMonths) {
-    warnings.push(
-      `PAYBACK_TOO_LONG: payback of ${fmt(expected.paybackMonths)} months exceeds ${fmt(roi.paybackWarningMonths)}; hard to sell, cut scope`,
+    warn(
+      'PAYBACK_TOO_LONG',
+      `Payback of ${fmt(expected.paybackMonths)} months exceeds ${fmt(roi.paybackWarningMonths)}; hard to sell, cut scope`,
     )
   }
   if (scored.length > 0 && lowestConfidence < LOW_CONFIDENCE_THRESHOLD) {
-    warnings.push(`LOW_CONFIDENCE: the lowest opportunity confidence is ${fmt(lowestConfidence)}; the case rests on guesses`)
+    warn('LOW_CONFIDENCE', `The lowest opportunity confidence is ${fmt(lowestConfidence)}; the case rests on guesses`)
   }
   if (annualRunCost > grossAnnualValue * RUN_COST_SHARE_THRESHOLD) {
-    warnings.push(
-      `RUN_COST_EATS_CASE: the running cost of ${fmt(annualRunCost)} ${currency}/year is above ${fmt(RUN_COST_SHARE_THRESHOLD * 100)}% of the ${fmt(grossAnnualValue)} ${currency}/year value`,
+    warn(
+      'RUN_COST_EATS_CASE',
+      `The running cost of ${fmt(annualRunCost)} ${currency}/year is above ${fmt(RUN_COST_SHARE_THRESHOLD * 100)}% of the ${fmt(grossAnnualValue)} ${currency}/year value`,
     )
   }
   // Money is told by its currency alone, which cannot separate an hourly cost from a cost per
   // error, so any default money figure warns: either way the case rests on a made-up cost.
   if (assumptions.some((traced) => traced.source === 'default' && traced.currency !== undefined)) {
-    warnings.push('DEFAULT_COST: a cost in this case is a default, not a figure the client gave; you are quoting on made-up money')
+    warn('DEFAULT_COST', 'A cost in this case is a default, not a figure the client gave; you are quoting on made-up money')
   }
 
   // Exactly the fields read above from each upstream result, so a scoring recompute with the

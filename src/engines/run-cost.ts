@@ -1,6 +1,6 @@
 import type { DeliveryModel } from '../schema/company'
 import type { Config } from '../schema/config'
-import type { RunCostResult } from '../schema/results'
+import type { RunCostResult, RunCostWarningCode } from '../schema/results'
 import type { RunCostLineItem } from '../schema/run-cost'
 import { fmt } from './format'
 import { hashInputs } from './inputs-hash'
@@ -35,12 +35,15 @@ export function itemMonthlyCost(item: RunCostLineItem): number {
 export function computeRunCost(input: RunCostInput): RunCostResult {
   const { items, deliveryModel, supportRetainerMonthly, config, now } = input
   const currency = config.agencyCurrency
-  const warnings: string[] = []
+  const warnings: RunCostResult['warnings'] = []
+  const warn = (code: RunCostWarningCode, message: string): void => {
+    warnings.push({ code, message })
+  }
 
   const priced = items.map((item) => ({ item, monthly: itemMonthlyCost(item) }))
   for (const { item } of priced) {
     if (item.usageBased && item.usageFormula === undefined) {
-      warnings.push(`MISSING_USAGE_FORMULA: '${item.label}' is usage-based but has no usage formula, so it is priced at 0`)
+      warn('MISSING_USAGE_FORMULA', `'${item.label}' is usage-based but has no usage formula, so it is priced at 0`)
     }
   }
 
@@ -68,20 +71,23 @@ export function computeRunCost(input: RunCostInput): RunCostResult {
   // checked regardless of the selection.
   const clientOwnedAgency = perModel['client-owned'].agencyMonthly
   if (clientOwnedAgency > 0) {
-    warnings.push(
-      `AGENCY_COST_UNDER_CLIENT_OWNED: the client-owned column carries ${fmt(clientOwnedAgency)} ${currency}/month of agency cost; under client ownership the agency should pay nothing`,
+    warn(
+      'AGENCY_COST_UNDER_CLIENT_OWNED',
+      `The client-owned column carries ${fmt(clientOwnedAgency)} ${currency}/month of agency cost; under client ownership the agency should pay nothing`,
     )
   }
   if (supportRetainerMonthly !== null) {
     const supportAnnual = supportRetainerMonthly * 12
     if (selected.agencyAnnual > supportAnnual * RETAINER_MARGIN_THRESHOLD) {
-      warnings.push(
-        `RETAINER_MARGIN_THIN: agency run cost of ${fmt(selected.agencyAnnual)} ${currency}/year under ${deliveryModel} exceeds ${fmt(RETAINER_MARGIN_THRESHOLD * 100)}% of the ${fmt(supportAnnual)} ${currency}/year support retainer`,
+      warn(
+        'RETAINER_MARGIN_THIN',
+        `Agency run cost of ${fmt(selected.agencyAnnual)} ${currency}/year under ${deliveryModel} exceeds ${fmt(RETAINER_MARGIN_THRESHOLD * 100)}% of the ${fmt(supportAnnual)} ${currency}/year support retainer`,
       )
     }
   } else if (selected.agencyMonthly > 0) {
-    warnings.push(
-      `RETAINER_NOT_SET: the agency carries ${fmt(selected.agencyMonthly)} ${currency}/month of run cost under ${deliveryModel} and no support retainer is set`,
+    warn(
+      'RETAINER_NOT_SET',
+      `The agency carries ${fmt(selected.agencyMonthly)} ${currency}/month of run cost under ${deliveryModel} and no support retainer is set`,
     )
   }
 
