@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import storeV2 from '../__fixtures__/store-v2.json'
 import { WholeStoreSchema } from '../store'
+import { CURRENT_SCHEMA_VERSION } from '../version'
 import { MigrationError, runMigrations } from './run-migrations'
 import { migrateV2ToV3 } from './v2-to-v3'
 
@@ -50,11 +51,14 @@ describe('migrateV2ToV3', () => {
     expect(overrideHashes(after)).toEqual(hashesBefore)
   })
 
-  it('migrates the v2 fixture to a store that validates at version 3, changing nothing Zod would add or strip', () => {
+  it('migrates the v2 fixture through the whole chain to a store that validates, changing nothing Zod would add or strip', () => {
     const migrated = runMigrations(v2Store(), 2)
     expect(WholeStoreSchema.safeParse(migrated).success).toBe(true)
-    expect(migrated.meta.schemaVersion).toBe(3)
-    expect(migrated).toEqual(expectedV3())
+    expect(migrated.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    // Later steps add only what they document; the v2 → v3 override fields are still exactly visible.
+    const expected = expectedV3()
+    at(expected, 'meta').schemaVersion = CURRENT_SCHEMA_VERSION
+    expect(migrated).toEqual(expected)
   })
 
   it('reaches every artifact slot, not only the proposal', () => {

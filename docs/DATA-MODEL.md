@@ -36,7 +36,7 @@ type Source = 'client-stated' | 'measured' | 'estimated' | 'default'
 interface TracedValue {
   value: number           // never negative
   unit: string            // 'hours/week' | 'EUR' | 'percent' | 'count' | ... display text
-  currency?: Currency     // required for a money unit, and must match it
+  currency?: Currency     // required for a money unit, must match it, and allowed on nothing else
   source: Source
   note?: string           // "Marta said 'about 4 hours, most weeks'"
   capturedAt?: string     // ISO, when the client said it
@@ -48,9 +48,13 @@ A unit is a money unit when its leading segment, before any `/`, is a `Currency`
 code: `EUR`, `GBP/hour` and `USD/error` are money units; `hours/week` and
 `percent` are not. A money unit requires `currency`, and `currency` must equal
 the code the unit implies, so `{ unit: 'GBP/hour', currency: 'EUR' }` is
-rejected. Engines tell money by `currency` alone and never parse `unit` (ENGINES,
-Currency rule), so a unit that names a currency must not arrive without one, and
-a value whose unit and currency disagree could never be converted correctly.
+rejected. A `currency` on a unit that is not money is rejected too, so
+`{ unit: 'percent', currency: 'EUR' }` never validates. Engines tell money by
+`currency` alone and never parse `unit` (ENGINES, Currency rule), so a unit that
+names a currency must not arrive without one, a value whose unit and currency
+disagree could never be converted correctly, and a currency on a percentage or a
+count would be converted at an FX rate as if it were money. The rule is in the
+schema because import, folder restore and migration never pass through the UI.
 
 `value` is never negative. Every traced figure is a count, a duration, a share or
 a cost, and a negative one would run a value or effort calculation backwards
@@ -778,6 +782,10 @@ engines' behaviour changed (ARCHITECTURE, Derived data policy).
 Version 3 (`v2-to-v3.ts`) sets `baseInputs: null` and `rebasedFrom: null` on
 every section override and touches nothing else; every `baseInputsHash` is left
 as stored, so the upgrade itself puts no override into conflict.
+Version 4 (`v3-to-v4.ts`) only advances the version. It adds the rule that a
+`currency` appears only on a money unit; a v3 value that breaks it keeps its
+currency and fails with its issue path, because dropping the currency could
+silently turn a real cost into a bare number.
 `runMigrations` never writes. Storage writes the result back atomically and
 stamps `Meta.lastMigratedAt` only once it returns. An optional third argument,
 `{ migrations, current }`, exists so tests can exercise the step loop with a
