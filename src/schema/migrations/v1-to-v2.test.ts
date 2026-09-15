@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import storeV1 from '../__fixtures__/store-v1.json'
 import { WholeStoreSchema } from '../store'
 import { MigrationError, runMigrations } from './run-migrations'
+import { CURRENT_SCHEMA_VERSION } from '../version'
 import { migrateV1ToV2 } from './v1-to-v2'
 
 type Json = Record<string, unknown>
@@ -44,11 +45,17 @@ describe('migrateV1ToV2', () => {
     expect(migrateV1ToV2(before)).toEqual(expectedV2())
   })
 
-  it('migrates the v1 fixture to a store that validates at version 2, changing nothing Zod would add or strip', () => {
+  it('migrates the v1 fixture through the whole chain to a store that validates, changing nothing Zod would add or strip', () => {
     const migrated = runMigrations(v1Store(), 1)
     expect(WholeStoreSchema.safeParse(migrated).success).toBe(true)
-    expect(migrated.meta.schemaVersion).toBe(2)
-    expect(migrated).toEqual(expectedV2())
+    expect(migrated.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    // Later steps add only what they document; the v1 → v2 nulling is still exactly visible.
+    const expected = expectedV2()
+    at(expected, 'meta').schemaVersion = CURRENT_SCHEMA_VERSION
+    const override = at(expected, 'engagements', 0, 'artifacts', 'proposal', 'overrides', 0)
+    override.baseInputs = null
+    override.rebasedFrom = null
+    expect(migrated).toEqual(expected)
   })
 
   it('migrates v1 caches that v2 could not parse, since they are dropped rather than read', () => {
@@ -60,7 +67,7 @@ describe('migrateV1ToV2', () => {
     at(store, 'engagements', 0, 'scope', 'runCost').warnings = ['RETAINER_NOT_SET: no retainer']
     const migrated = runMigrations(store, 1)
     expect(WholeStoreSchema.safeParse(migrated).success).toBe(true)
-    expect(migrated.meta.schemaVersion).toBe(2)
+    expect(migrated.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
   })
 
   it('leaves data that breaks a v2 rule in place, so the migration fails with its issue path', () => {

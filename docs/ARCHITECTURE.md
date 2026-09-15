@@ -20,7 +20,9 @@ plain files on disk.
 ```
   ui/          React components, no business logic
     ↓ may import
-  hooks/       state orchestration, calls storage + engines
+  hooks/       state orchestration, calls storage + engines + render
+    ↓ may import
+  render/      pure: view model, template engine, overrides
     ↓ may import
   engines/     pure functions, no side effects        schema/   Zod + types
     ↓ may import                                        ↑
@@ -41,6 +43,10 @@ Hard rules, enforced by lint, and for engines by lint plus a test:
   and random calls. `src/engines/import-allowlist.test.ts` is the allowlist: it
   fails on any import that resolves outside `engines/` and `schema/`. A browser
   global missing from lint's list is not caught automatically.
+- `render/` is held to the same purity as `engines/`, one layer up: it may
+  import only `render/`, `engines/` and `schema/`. Same lint rule set, and
+  `src/render/import-allowlist.test.ts` is its allowlist. It takes plain data
+  in and returns a node tree; the DOM adapter takes the document as an argument.
 - Only `storage/repository.ts` imports `storage/db.ts`.
 - `ui/` never imports `storage/db.ts` or Dexie.
 - Nothing imports from `ui/` except `ui/` and `app.tsx`.
@@ -52,7 +58,7 @@ src/
   schema/       Zod schemas, inferred types, migrations, fixtures
   storage/      db.ts, repository.ts, derived.ts, sync.ts, transfer.ts
   engines/      scoring, roi, estimate, run-cost, calibration, signals
-  render/       template engine, view-model flattening, print layout (Stage 3)
+  render/       view-model, resolve, template, overrides, nodes; print layout (Stage 3)
   hooks/        useEngagement, useLibrary, useConfig, useDerived
   ui/           shell/, primitives/, views/
   app.tsx
@@ -87,6 +93,47 @@ override has drifted by comparing its `baseInputsHash` with the current
 `inputsHash`. It never compares recomputed results with earlier ones. An
 engine-behaviour migration recomputes results under unchanged hashes, so
 comparing results would mark every existing override as conflicted after it.
+
+## Rendering
+
+Every document is a render of the engagement record through a template
+(DATA-MODEL, `DocumentTemplate`), in three pure steps in `src/render/`:
+
+1. **View model.** `buildViewModel` flattens one Engagement, the Config and the
+   Library into plain data with every cross-reference followed. Optionals become
+   `null`, so a missing key is always a template typo. Client-facing by default:
+   breakdown rows with `audience: 'internal'` are dropped by their flag and the
+   ranking fields are left out entirely, so a client template that names one
+   fails to resolve rather than leaking it.
+2. **Template engine.** `renderTemplate` resolves `{{path}}`, `showIf` and
+   `repeatOver` per section into a node tree of text and elements. There is no
+   HTML string anywhere; `toDom` builds real nodes through `createTextNode` and
+   `createElement` only. A path that does not exist is a `RenderError` naming the
+   path and the section, never an empty string. A null on the way is an error
+   that points at `showIf`; in `showIf` itself a null, `false`, `0`, `''` or an
+   empty list hides the section. Each section records every value it read,
+   keyed by absolute view-model path (repeat items by index), and hashes exactly
+   those reads with `hashInputs`. A hidden section records its `showIf` as
+   `false`, so visibility is part of the hash.
+3. **Overrides.** A section edit is pinned to that hash and carries the read
+   values as `baseInputs` (DATA-MODEL, `SectionOverride`). On regeneration an
+   override whose hash still matches is reapplied; one whose hash drifted is
+   returned as a conflict with the edit, the freshly generated section and
+   every drifted path with old and new value, while the fresh body renders.
+   Nothing is dropped, and no stale edit is written over fresh data. Keeping
+   the edit rebases it onto the fresh render and records the hash it was kept
+   over in `rebasedFrom`.
+
+Because the hash covers what a section read and nothing else, an unrelated
+edit to the engagement never puts a section into conflict, and an edit to a
+value it shows always does.
+
+**Number formatting in prose rounds.** Interpolation prints a number through
+`fmt`, two decimals at most, which is right for a sentence and wrong for a money
+column: a stored 1234.567 prints as 1234.57 while the total is summed from the
+unrounded figures. The investment and run-cost tables (Stage 3, task 4) need a
+dedicated currency formatter that does not silently round, and every printed
+line item must reconcile against its printed total.
 
 ## Persistence
 

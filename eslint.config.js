@@ -47,6 +47,46 @@ const banEngineLayers = { regex: '(^|/)(storage|hooks|render|ui|app)(/|$)', mess
 const banEngineRuntimes = { regex: '^(react|react-dom|dexie)(/|$)', message: enginePurity }
 const injectedClock = 'Engines take the current time as an injected input.'
 
+// The render layer is held to the engines' purity, one layer up: it may also import engines/.
+const renderPurity = 'Render is pure: plain data in, a node tree out, imports from engines/ and schema/ only.'
+const banRenderLayers = { regex: '(^|/)(storage|hooks|ui|app)(/|$)', message: renderPurity }
+const banRenderRuntimes = { regex: '^(react|react-dom|dexie)(/|$)', message: renderPurity }
+
+// No browser globals, no clock, no randomness: the same output for the same input, always.
+const purityRules = (message, layers, runtimes) => ({
+  ...restrictImports(runtimes, layers),
+  'no-restricted-globals': [
+    'error',
+    ...[
+      'window',
+      'document',
+      'navigator',
+      'localStorage',
+      'sessionStorage',
+      'indexedDB',
+      'fetch',
+      'XMLHttpRequest',
+      'performance',
+      'location',
+      'setTimeout',
+      'setInterval',
+      // Reaches every other global, including Date.now, past the bans above.
+      'globalThis',
+    ].map((name) => ({ name, message })),
+  ],
+  'no-restricted-properties': [
+    'error',
+    { object: 'Date', property: 'now', message: injectedClock },
+    { object: 'Math', property: 'random', message: 'Pure modules must be deterministic.' },
+    { object: 'crypto', property: 'randomUUID', message: 'Pure modules must be deterministic.' },
+  ],
+  'no-restricted-syntax': [
+    'error',
+    { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: injectedClock },
+    { selector: "CallExpression[callee.name='Date']", message: injectedClock },
+  ],
+})
+
 // Flat config replaces, not merges, a rule's options when several blocks match
 // one file, so each block restates the full pattern list for its files.
 const restrictImports = (...patterns) => ({
@@ -95,38 +135,10 @@ export default defineConfig(
   },
   {
     files: ['src/engines/**/*.{ts,tsx}'],
-    rules: {
-      ...restrictImports(banEngineRuntimes, banEngineLayers),
-      'no-restricted-globals': [
-        'error',
-        ...[
-          'window',
-          'document',
-          'navigator',
-          'localStorage',
-          'sessionStorage',
-          'indexedDB',
-          'fetch',
-          'XMLHttpRequest',
-          'performance',
-          'location',
-          'setTimeout',
-          'setInterval',
-          // Reaches every other global, including Date.now, past the bans above.
-          'globalThis',
-        ].map((name) => ({ name, message: enginePurity })),
-      ],
-      'no-restricted-properties': [
-        'error',
-        { object: 'Date', property: 'now', message: injectedClock },
-        { object: 'Math', property: 'random', message: 'Engines must be deterministic.' },
-        { object: 'crypto', property: 'randomUUID', message: 'Engines must be deterministic.' },
-      ],
-      'no-restricted-syntax': [
-        'error',
-        { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: injectedClock },
-        { selector: "CallExpression[callee.name='Date']", message: injectedClock },
-      ],
-    },
+    rules: purityRules(enginePurity, banEngineLayers, banEngineRuntimes),
+  },
+  {
+    files: ['src/render/**/*.{ts,tsx}'],
+    rules: purityRules(renderPurity, banRenderLayers, banRenderRuntimes),
   },
 )
