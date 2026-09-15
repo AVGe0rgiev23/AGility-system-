@@ -194,6 +194,17 @@ describe('ROIResultSchema', () => {
     ])
   })
 
+  it('accepts null return ratios and payback, as a zero-price estimate produces', () => {
+    const result = roiResult()
+    const unpriced = { ...result.scenarios.expected, paybackMonths: null, roiYear1: null, roiYear3: null }
+    const scenarios = { conservative: unpriced, expected: unpriced, optimistic: unpriced }
+    expect(issuePaths(ROIResultSchema, { ...result, scenarios })).toEqual([])
+    const { roiYear1: _omitted, ...withoutRatio } = result.scenarios.expected
+    expect(issuePaths(ROIResultSchema, { ...result, scenarios: { ...result.scenarios, expected: withoutRatio } })).toEqual([
+      'scenarios.expected.roiYear1',
+    ])
+  })
+
   it('survives a JSON round trip unchanged', () => {
     expect(ROIResultSchema.parse(roundTrip(roiResult()))).toEqual(roiResult())
   })
@@ -205,5 +216,7 @@ describe('ROIResultSchema', () => {
     expectTypeOf<ROIResult['scenarios']['conservative']['paybackMonths']>().toEqualTypeOf<
       number | null
     >()
+    expectTypeOf<ROIResult['scenarios']['conservative']['roiYear1']>().toEqualTypeOf<number | null>()
+    expectTypeOf<ROIResult['scenarios']['conservative']['roiYear3']>().toEqualTypeOf<number | null>()
   })
 })

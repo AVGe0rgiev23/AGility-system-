@@ -23,11 +23,12 @@ type Scenario = ROIResult['scenarios'][keyof ROIResult['scenarios']]
 
 function scenario(grossAnnualValue: number, annualRunCost: number, implementationCost: number, roi: Config['roi']): Scenario {
   const netAnnualBenefit = grossAnnualValue - annualRunCost
-  const paybackMonths = netAnnualBenefit <= 0 ? null : implementationCost / (netAnnualBenefit / 12)
-  // A free project has no return ratio. The result schema holds plain numbers, so 0 stands in
-  // and computeROI warns NO_IMPLEMENTATION_COST rather than emitting Infinity.
-  const roiYear1 = implementationCost === 0 ? 0 : (netAnnualBenefit - implementationCost) / implementationCost
-  const roiYear3 = implementationCost === 0 ? 0 : (3 * netAnnualBenefit - implementationCost) / implementationCost
+  // A zero price has no return ratio and nothing to pay back. Null says so; a 0 would print as a
+  // real figure on a proposal, and computeROI warns NO_IMPLEMENTATION_COST.
+  const unpriced = implementationCost === 0
+  const paybackMonths = unpriced || netAnnualBenefit <= 0 ? null : implementationCost / (netAnnualBenefit / 12)
+  const roiYear1 = unpriced ? null : (netAnnualBenefit - implementationCost) / implementationCost
+  const roiYear3 = unpriced ? null : (3 * netAnnualBenefit - implementationCost) / implementationCost
   let npv = -implementationCost
   for (let year = 1; year <= roi.horizonYears; year++) {
     npv += netAnnualBenefit / (1 + roi.discountRate) ** year
@@ -79,15 +80,16 @@ export function computeROI(input: ROIInput): ROIResult {
     warn('EMPTY_SCOPE', 'No opportunity is selected, so there is no case to make')
   }
   if (implementationCost === 0) {
-    warn('NO_IMPLEMENTATION_COST', 'The estimate prices at 0, so the return ratios are reported as 0')
+    warn('NO_IMPLEMENTATION_COST', 'The estimate prices at 0, so payback and the return ratios are not reported')
   }
   const expected = scenarios.expected
-  if (expected.paybackMonths === null) {
+  // Judged on the net benefit, since a null payback may only mean a zero price.
+  if (expected.netAnnualBenefit <= 0) {
     warn(
       'NO_PAYBACK',
       `The running cost of ${fmt(annualRunCost)} ${currency}/year meets or exceeds the value of ${fmt(grossAnnualValue)} ${currency}/year; stop`,
     )
-  } else if (expected.paybackMonths > roi.paybackWarningMonths) {
+  } else if (expected.paybackMonths !== null && expected.paybackMonths > roi.paybackWarningMonths) {
     warn(
       'PAYBACK_TOO_LONG',
       `Payback of ${fmt(expected.paybackMonths)} months exceeds ${fmt(roi.paybackWarningMonths)}; hard to sell, cut scope`,

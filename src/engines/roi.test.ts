@@ -41,10 +41,11 @@ function withRunCost(clientMonthly: number, agencyMonthly: number): ROIInput['ru
 function expectScenario(actual: ROIResult['scenarios'][keyof ROIResult['scenarios']], expected: typeof actual): void {
   expect(actual.grossAnnualValue).toBeCloseTo(expected.grossAnnualValue, 6)
   expect(actual.netAnnualBenefit).toBeCloseTo(expected.netAnnualBenefit, 6)
-  if (expected.paybackMonths === null) expect(actual.paybackMonths).toBeNull()
-  else expect(actual.paybackMonths).toBeCloseTo(expected.paybackMonths, 6)
-  expect(actual.roiYear1).toBeCloseTo(expected.roiYear1, 6)
-  expect(actual.roiYear3).toBeCloseTo(expected.roiYear3, 6)
+  for (const key of ['paybackMonths', 'roiYear1', 'roiYear3'] as const) {
+    const value = expected[key]
+    if (value === null) expect(actual[key], key).toBeNull()
+    else expect(actual[key], key).toBeCloseTo(value, 6)
+  }
   expect(actual.npv).toBeCloseTo(expected.npv, 6)
 }
 
@@ -75,8 +76,8 @@ describe('computeROI (§4)', () => {
     expect(result.scenarios.expected.grossAnnualValue).toBe(18240)
     expect(result.scenarios.expected.netAnnualBenefit).toBe(18180)
     expect(result.scenarios.expected.paybackMonths).toBeCloseTo(fixture.scenarios.expected.paybackMonths ?? NaN, 2)
-    expect(result.scenarios.expected.roiYear1).toBeCloseTo(fixture.scenarios.expected.roiYear1, 2)
-    expect(result.scenarios.expected.roiYear3).toBeCloseTo(fixture.scenarios.expected.roiYear3, 2)
+    expect(result.scenarios.expected.roiYear1).toBeCloseTo(fixture.scenarios.expected.roiYear1 ?? NaN, 2)
+    expect(result.scenarios.expected.roiYear3).toBeCloseTo(fixture.scenarios.expected.roiYear3 ?? NaN, 2)
     expect(result.scenarios.expected.npv).toBeCloseTo(fixture.scenarios.expected.npv, 0)
     expect(result.hoursSavedPerMonth).toBeCloseTo(33.6, 10)
     expect(result.hoursSavedPerYear).toBeCloseTo(403.2, 10)
@@ -145,15 +146,17 @@ describe('computeROI (§4)', () => {
     expect(equals.scenarios.expected.paybackMonths).toBeNull()
   })
 
-  it('returns 0 ROI with a warning when there is no implementation cost to divide by', () => {
+  it('reports no payback and no return ratios, with a warning, when the estimate prices at 0', () => {
     const result = computeROI(baseInput({ estimate: { ...estimateResult(), price: 0 } }))
-    for (const scenario of Object.values(result.scenarios)) {
-      expect(scenario.roiYear1).toBe(0)
-      expect(scenario.roiYear3).toBe(0)
-      expect(scenario.paybackMonths).toBe(0)
-      expect(Number.isFinite(scenario.npv)).toBe(true)
+    for (const [name, scenario] of Object.entries(result.scenarios)) {
+      expect(scenario.paybackMonths, name).toBeNull()
+      expect(scenario.roiYear1, name).toBeNull()
+      expect(scenario.roiYear3, name).toBeNull()
+      expect(Number.isFinite(scenario.npv), name).toBe(true)
     }
     expect(warningCodes(result)).toContain('NO_IMPLEMENTATION_COST')
+    // The value still covers the running cost, so a null payback here is not NO_PAYBACK.
+    expect(warningCodes(result)).not.toContain('NO_PAYBACK')
   })
 
   it('reports the empty scope rather than a low-confidence case', () => {
@@ -274,23 +277,35 @@ describe('computeROI invariants', () => {
     const random = mulberry32(61)
     for (let i = 0; i < CASES; i++) {
       const { conservative, expected, optimistic } = computeROI(randomROIInput(random)).scenarios
-      for (const key of ['grossAnnualValue', 'netAnnualBenefit', 'roiYear1', 'roiYear3', 'npv'] as const) {
+      for (const key of ['grossAnnualValue', 'netAnnualBenefit', 'npv'] as const) {
         expect(conservative[key], `case ${i} ${key}`).toBeLessThanOrEqual(expected[key] + 1e-9)
         expect(expected[key], `case ${i} ${key}`).toBeLessThanOrEqual(optimistic[key] + 1e-9)
+      }
+      for (const key of ['roiYear1', 'roiYear3'] as const) {
+        const [low, middle, high] = [conservative[key], expected[key], optimistic[key]]
+        if (low === null || middle === null || high === null) {
+          expect([low, middle, high], `case ${i} ${key}`).toEqual([null, null, null])
+        } else {
+          expect(low, `case ${i} ${key}`).toBeLessThanOrEqual(middle + 1e-9)
+          expect(middle, `case ${i} ${key}`).toBeLessThanOrEqual(high + 1e-9)
+        }
       }
     }
   })
 
-  it('has a payback exactly when the net benefit is positive', () => {
+  it('has a payback exactly when both the net benefit and the price are positive, and ratios exactly when priced', () => {
     const random = mulberry32(62)
     for (let i = 0; i < CASES; i++) {
       const result = computeROI(randomROIInput(random))
+      const priced = result.implementationCost > 0
       for (const scenario of Object.values(result.scenarios)) {
-        if (scenario.netAnnualBenefit <= 0) expect(scenario.paybackMonths, `case ${i}`).toBeNull()
+        if (scenario.netAnnualBenefit <= 0 || !priced) expect(scenario.paybackMonths, `case ${i}`).toBeNull()
         else {
           expect(scenario.paybackMonths, `case ${i}`).not.toBeNull()
           expect(scenario.paybackMonths ?? -1, `case ${i}`).toBeGreaterThanOrEqual(0)
         }
+        expect(scenario.roiYear1 === null, `case ${i}`).toBe(!priced)
+        expect(scenario.roiYear3 === null, `case ${i}`).toBe(!priced)
       }
     }
   })
@@ -322,10 +337,11 @@ describe('computeROI invariants', () => {
       const twice = computeROI(scaled).scenarios
       for (const key of ['conservative', 'expected', 'optimistic'] as const) {
         expect(twice[key].npv, `case ${i} ${key}`).toBeCloseTo(2 * base[key].npv, 6)
-        expect(twice[key].roiYear1, `case ${i} ${key}`).toBeCloseTo(base[key].roiYear1, 6)
-        expect(twice[key].roiYear3, `case ${i} ${key}`).toBeCloseTo(base[key].roiYear3, 6)
-        if (base[key].paybackMonths === null) expect(twice[key].paybackMonths, `case ${i} ${key}`).toBeNull()
-        else expect(twice[key].paybackMonths, `case ${i} ${key}`).toBeCloseTo(base[key].paybackMonths, 6)
+        for (const ratio of ['roiYear1', 'roiYear3', 'paybackMonths'] as const) {
+          const before = base[key][ratio]
+          if (before === null) expect(twice[key][ratio], `case ${i} ${key} ${ratio}`).toBeNull()
+          else expect(twice[key][ratio], `case ${i} ${key} ${ratio}`).toBeCloseTo(before, 6)
+        }
       }
     }
   })

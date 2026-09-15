@@ -135,10 +135,11 @@ export const ROIResultSchema = z.object({
     z.object({
       grossAnnualValue: z.number(),
       netAnnualBenefit: z.number(),
-      // null when the running cost meets or exceeds the value: there is no payback.
+      // Null when the running cost meets or exceeds the value, or when the estimate prices at 0.
       paybackMonths: z.number().nullable(),
-      roiYear1: z.number(),
-      roiYear3: z.number(),
+      // Null when the estimate prices at 0: a ratio over a zero price has no answer.
+      roiYear1: z.number().nullable(),
+      roiYear3: z.number().nullable(),
       npv: z.number(),
     }),
   ),
