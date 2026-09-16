@@ -231,22 +231,41 @@ describe('industries', () => {
 })
 
 describe('run-cost defaults', () => {
-  it('adds an item with the given id whose monthly cost is a blocking value required, never a silent zero', () => {
+  it('adds an item with the given id and no monthly cost, which blocks saving until one is typed, never a silent zero', () => {
     const state = addRunCostItem(initialConfigForm(defaultConfig()), 'rc-new')
     expect(draftOf(state).runCostDefaults).toEqual([
       {
         id: 'rc-new',
         label: '',
         category: 'other',
-        monthlyCost: 0,
+        monthlyCost: null,
         paidBy: { 'fully-managed': 'agency', 'client-owned': 'client', hybrid: 'client' },
         usageBased: false,
       },
     ])
+    expect(state.texts).toEqual({})
     expect(numberText(state, 'runCostDefaults.0.monthlyCost')).toBe('')
-    expect(formIssues(state)).toEqual([{ path: 'runCostDefaults.0.monthlyCost', message: VALUE_REQUIRED }])
+    expect(formIssues(state)).toEqual([{ path: 'runCostDefaults.0.monthlyCost', message: 'monthlyCost is required when usageBased is false' }])
     expect(canSave(state)).toBe(false)
     expect(canSave(setNumberText(state, 'runCostDefaults.0.monthlyCost', '12'))).toBe(true)
+  })
+
+  it('needs no monthly cost on a usage-based item, and reads a cleared one as null', () => {
+    const cleared = setNumberText(initialConfigForm(withRunCost({ ...usageRunCostLineItem(), monthlyCost: 40 })), 'runCostDefaults.0.monthlyCost', '')
+    expect(draftOf(cleared).runCostDefaults[0]?.monthlyCost).toBeNull()
+    expect(formIssues(cleared)).toEqual([])
+    expect(canSave(cleared)).toBe(true)
+
+    // Turning usage pricing off leaves the cost empty, so a cost has to be chosen rather than inherited.
+    const fixed = setUsageBased(cleared, 0, false)
+    expect(draftOf(fixed).runCostDefaults[0]?.monthlyCost).toBeNull()
+    expect(formIssues(fixed)).toEqual([{ path: 'runCostDefaults.0.monthlyCost', message: 'monthlyCost is required when usageBased is false' }])
+  })
+
+  it('refuses a cleared monthly cost on a fixed item at its field', () => {
+    const state = setNumberText(initialConfigForm(withRunCost(runCostLineItem())), 'runCostDefaults.0.monthlyCost', ' ')
+    expect(draftOf(state).runCostDefaults[0]?.monthlyCost).toBeNull()
+    expect(formIssues(state)).toEqual([{ path: 'runCostDefaults.0.monthlyCost', message: 'monthlyCost is required when usageBased is false' }])
   })
 
   it('turns usage pricing on with five empty formula fields, each a blocking value required', () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { TransferFlow } from '../../../hooks/use-transfer-flow'
 import { engagement, newEngagement, wholeStore } from '../../../schema/__fixtures__/records'
 import type { RawStore } from '../../../storage/repository'
+import { CURRENT_SCHEMA_VERSION } from '../../../schema/version'
 import { prepareImportText, type ImportRefusal, type PreparedImport } from '../../../storage/transfer'
 import { ImportDiff } from './import-diff'
 
@@ -56,7 +57,7 @@ describe('ImportDiff', () => {
   it('shows the versions, the Config keys that change, the kept storage block and every record replaced', async () => {
     const html = render({ step: 'prepared', source: FILE, prepared: await replacing(), acknowledged: false })
     expect(html).toContain('Import: review before replacing')
-    expect(html).toContain('stored <span class="num">v4</span>, replaced with <span class="num">v4</span>')
+    expect(html).toContain(`stored <span class="num">v${CURRENT_SCHEMA_VERSION}</span>, replaced with <span class="num">v${CURRENT_SCHEMA_VERSION}</span>`)
     expect(html).toContain('changes <span class="num">pricing</span>')
     expect(html).toContain('storage settings are kept')
     expect(html).toContain(`<span class="num">${newEngagement().id}</span>`)

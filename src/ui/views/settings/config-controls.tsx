@@ -25,11 +25,13 @@ export interface NumberFieldProps extends ControlProps {
   // A fraction stored as 0.20: the label reads 'Testing overhead (20%)' from what is typed now, so it
   // is never taken for a tenth of a percent, and shows no percent while the text does not parse.
   percent?: boolean
-  // Empty text means null: no limit, or no price.
+  // Empty text means null: no limit, no price, or no monthly cost.
   nullable?: boolean
+  // Marked required unless nullable; a field that is required only sometimes says when.
+  required?: boolean
 }
 
-export function NumberField({ form, path, label, hint, layout, unit, percent = false, nullable = false }: NumberFieldProps) {
+export function NumberField({ form, path, label, hint, layout, unit, percent = false, nullable = false, required = !nullable }: NumberFieldProps) {
   const reading = form.numberReading(path)
   return (
     <NumberInput
@@ -40,7 +42,7 @@ export function NumberField({ form, path, label, hint, layout, unit, percent = f
       hint={hint}
       warnings={form.numberWarnings(path)}
       issues={form.issuesAt(path)}
-      required={!nullable}
+      required={required}
       layout={layout}
       onText={(text) => form.setNumberText(path, text)}
     />

@@ -86,6 +86,16 @@ describe('ConfigSections, every field', () => {
     expect(html).toMatch(/<output[^>]*data-config-path="storage.lastSyncAt"[^>]*>none<\/output>/)
   })
 
+  it('marks a monthly cost required only on an item that is not usage-based, and shows an empty one as empty', () => {
+    const config = defaultConfig()
+    config.runCostDefaults = [usageRunCostLineItem(), runCostLineItem()]
+    const html = render(initialConfigForm(config))
+    expect(tagFor(html, 'runCostDefaults.0.monthlyCost')).toContain('value=""')
+    expect(tagFor(html, 'runCostDefaults.0.monthlyCost')).toContain('aria-required="false"')
+    expect(tagFor(html, 'runCostDefaults.1.monthlyCost')).toContain('value="5"')
+    expect(tagFor(html, 'runCostDefaults.1.monthlyCost')).toContain('aria-required="true"')
+  })
+
   it('shows no usage formula table without a usage-based item', () => {
     const config = defaultConfig()
     config.runCostDefaults = [runCostLineItem()]

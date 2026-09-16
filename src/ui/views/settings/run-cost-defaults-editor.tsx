@@ -68,7 +68,7 @@ export function RunCostDefaultsEditor({ form, items }: { form: ConfigFormView; i
       form={form}
       path="runCostDefaults"
       title="Run-cost defaults"
-      hint="Costs are in EUR. A usage-based item is priced from its formula, and its monthly cost is ignored."
+      hint="Costs are in EUR. A usage-based item is priced from its formula and needs no monthly cost; any it carries is ignored."
       addLabel="Add item"
       onAdd={form.addRunCostItem}
     >
@@ -82,7 +82,10 @@ export function RunCostDefaultsEditor({ form, items }: { form: ConfigFormView; i
             {
               id: 'monthlyCost',
               header: 'Monthly cost',
-              cell: ({ index, name }) => <NumberField form={form} path={at(index, 'monthlyCost')} label={`Monthly cost of ${name}`} unit="EUR/month" layout="cell" />,
+              // Empty on a usage-based item, which its formula prices; required on any other.
+              cell: ({ item, index, name }) => (
+                <NumberField form={form} path={at(index, 'monthlyCost')} label={`Monthly cost of ${name}`} unit="EUR/month" nullable required={!item.usageBased} layout="cell" />
+              ),
             },
             {
               id: 'usageBased',

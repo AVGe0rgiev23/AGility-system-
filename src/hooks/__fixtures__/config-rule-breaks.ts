@@ -1,7 +1,7 @@
-import { usageRunCostLineItem } from '../../schema/__fixtures__/records'
+import { runCostLineItem, usageRunCostLineItem } from '../../schema/__fixtures__/records'
 import type { Config } from '../../schema/config'
 
-// One break per rule in DATA-MODEL's Config Validation table, plus the run-cost formula rule, each
+// One break per rule in DATA-MODEL's Config Validation table, plus the two run-cost item rules, each
 // with every issue path it raises. Shared by the form model and the Settings render tests, so both
 // prove the same thing: an issue for any rule has somewhere to show.
 
@@ -92,5 +92,10 @@ export const CONFIG_RULE_BREAKS: readonly ConfigRuleBreak[] = [
       c.runCostDefaults = [item]
     },
     paths: ['runCostDefaults.0.usageFormula'],
+  },
+  {
+    rule: 'a run-cost item that is not usage-based has a monthly cost',
+    apply: (c) => (c.runCostDefaults = [{ ...runCostLineItem(), monthlyCost: null }]),
+    paths: ['runCostDefaults.0.monthlyCost'],
   },
 ]

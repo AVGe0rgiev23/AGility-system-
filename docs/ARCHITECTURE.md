@@ -317,10 +317,15 @@ data stay in `ConfigSchema`, and the screen only places their messages.
   `parseNumberText`, with TracedInput's refusals and dot warning.
   - Text that does not parse never reaches the draft, so the schema's rules
     always run on valid types. At such a field only the text's own issue shows.
-  - Empty text on a band's max hours, floor or ceiling is `null`.
-  - A new run-cost item's monthly cost, and each of the five fields of a new
-    usage formula, start as empty text: a blocking "value required", never a
-    silent zero. Turning usage pricing off removes the formula.
+  - Empty text is `null` on a band's max hours, floor or ceiling and on a
+    run-cost item's monthly cost. Where `null` is not allowed the schema says so
+    at the field.
+  - Nothing new starts as a silent zero. A new run-cost item has no monthly
+    cost, which the schema refuses until one is typed or the item is made
+    usage-based. The monthly cost is marked required only while the item is not
+    usage-based. Each of the five fields of a new usage formula starts as empty
+    text, a blocking "value required". Turning usage pricing off removes the
+    formula and leaves the cost as it was, so an empty cost must then be chosen.
   - Adding, removing or moving an item in a list drops typed text under that
     list, since its indices shift.
 - **Fractions are edited as stored**, `0.2`, with the percent in the label:

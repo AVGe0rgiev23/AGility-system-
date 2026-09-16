@@ -39,7 +39,7 @@ export const READ_ONLY_PATHS: Readonly<Record<string, string>> = {
 // Where a rule about a whole list reports, e.g. 'Exactly one band must have no max hours'.
 export const LIST_PATHS: readonly string[] = ['industries', 'pricing.bands', 'runCostDefaults']
 
-const NULLABLE_NUMBER = /^pricing\.bands\.\d+\.(maxHours|floor|ceiling)$/
+const NULLABLE_NUMBER = /^(pricing\.bands\.\d+\.(maxHours|floor|ceiling)|runCostDefaults\.\d+\.monthlyCost)$/
 // Optional text: clearing it removes the key rather than storing an empty string.
 const OPTIONAL_TEXT = /^(agency\.vatId|runCostDefaults\.\d+\.notes)$/
 const FORMULA_KEYS = ['callsPerMonth', 'avgInputTokens', 'avgOutputTokens', 'inputPricePerMTok', 'outputPricePerMTok'] as const
@@ -118,7 +118,8 @@ export function setNumberText(state: ConfigFormState, path: string, text: string
   const texts = { ...state.texts, [path]: text }
   const parsed = parseNumberText(text)
   if (parsed.kind === 'number') return { ...state, draft: replaceIn(state.draft, path, parsed.value), texts }
-  // Empty is the stored meaning of 'no limit' or 'no price' on a band, and nothing else.
+  // Empty is the stored meaning of 'no limit' or 'no price' on a band and of no monthly cost on a
+  // run-cost item, and nothing else. Where null is not allowed, the schema says so at the field.
   if (parsed.kind === 'empty' && nullable) return { ...state, draft: replaceIn(state.draft, path, null), texts }
   return { ...state, texts }
 }
@@ -199,22 +200,21 @@ export function moveIndustry(state: ConfigFormState, index: number, offset: -1 |
   return editList(state, 'industries', (draft) => ({ ...draft, industries: moved(draft.industries, index, offset) }))
 }
 
-// The monthly cost starts as empty text, a blocking 'value required', never a silent zero. Who pays
-// follows each delivery model's meaning and is shown on the row to change.
+// The monthly cost starts empty, never a silent zero: the schema refuses it until a cost is typed or
+// the item is made usage-based. Who pays follows each delivery model's meaning and is shown on the
+// row to change.
 export function addRunCostItem(state: ConfigFormState, id: string): ConfigFormState {
-  const next = editList(state, 'runCostDefaults', (draft) => {
+  return editList(state, 'runCostDefaults', (draft) => {
     const item: RunCostLineItem = {
       id,
       label: '',
       category: 'other',
-      monthlyCost: 0,
+      monthlyCost: null,
       paidBy: { 'fully-managed': 'agency', 'client-owned': 'client', hybrid: 'client' },
       usageBased: false,
     }
     return { ...draft, runCostDefaults: [...draft.runCostDefaults, item] }
   })
-  if (next.draft === null) return next
-  return { ...next, texts: { ...next.texts, [`runCostDefaults.${next.draft.runCostDefaults.length - 1}.monthlyCost`]: '' } }
 }
 
 export function removeRunCostItem(state: ConfigFormState, index: number): ConfigFormState {
