@@ -2,7 +2,20 @@ import { useState } from 'react'
 import { canonicalJson } from '../engines/inputs-hash'
 import { ConfigSchema, defaultConfig, type Config } from '../schema/config'
 import type { RunCostLineItem } from '../schema/run-cost'
-import { parseNumberText, VALUE_REQUIRED } from './use-traced-draft'
+import {
+  issuesByPath,
+  leafPaths,
+  moved,
+  numberWarnings as warningsFor,
+  replaceAt,
+  schemaIssues as issuesOf,
+  textIssues as typedTextIssues,
+  valueAt,
+  withoutTextsUnder,
+  withTextIssuesFirst,
+  type FormIssue,
+} from './form-paths'
+import { parseNumberText } from './use-traced-draft'
 
 // The editing model behind the Settings screen, as pure functions like use-traced-draft, so it can be
 // tested without a DOM.
@@ -14,10 +27,7 @@ import { parseNumberText, VALUE_REQUIRED } from './use-traced-draft'
 //   draft always has valid types and ConfigSchema's consistency rules always run on it.
 // - Nothing here repeats a rule. ConfigSchema owns them; this only places their messages.
 
-export interface ConfigIssue {
-  path: string
-  message: string
-}
+export type ConfigIssue = FormIssue
 
 export interface ConfigFormState {
   // The Config as stored, or null when the stored record does not validate.
@@ -57,39 +67,10 @@ export function discardChanges(state: ConfigFormState): ConfigFormState {
   return initialConfigForm(state.saved)
 }
 
-function segmentsOf(path: string): string[] {
-  return path.split('.')
-}
-
-export function valueAt(config: Config, path: string): unknown {
-  let current: unknown = config
-  for (const segment of segmentsOf(path)) {
-    if (typeof current !== 'object' || current === null) return undefined
-    current = (current as Record<string, unknown>)[segment]
-  }
-  return current
-}
-
-// A copy with one value replaced, or with its key removed when `next` is undefined.
-function replaceAt(container: unknown, segments: readonly string[], next: unknown): unknown {
-  const [head, ...rest] = segments
-  if (head === undefined) return next
-  if (Array.isArray(container)) {
-    const copy: unknown[] = [...(container as unknown[])]
-    copy[Number(head)] = replaceAt(copy[Number(head)], rest, next)
-    return copy
-  }
-  const copy: Record<string, unknown> = { ...(container as Record<string, unknown>) }
-  const value = replaceAt(copy[head], rest, next)
-  if (value === undefined) delete copy[head]
-  else copy[head] = value
-  return copy
-}
-
 function replaceIn(config: Config, path: string, next: unknown): Config {
   // Every caller checks first that it replaces a value of the same type as the one already at the
   // path, so the result is still a Config.
-  return replaceAt(config, segmentsOf(path), next) as Config
+  return replaceAt(config, path, next) as Config
 }
 
 function writable(path: string): void {
@@ -144,21 +125,6 @@ export function setFlag(state: ConfigFormState, path: string, on: boolean): Conf
 }
 
 // ---- Lists ----------------------------------------------------------------------------------------
-
-// Adding, removing or moving an item shifts the indices under the list, so any typed text there
-// would land on the wrong item. It is dropped, and each field shows its item's value again.
-function withoutTextsUnder(texts: Readonly<Record<string, string>>, prefix: string): Record<string, string> {
-  return Object.fromEntries(Object.entries(texts).filter(([path]) => !path.startsWith(`${prefix}.`)))
-}
-
-function moved<T>(items: readonly T[], index: number, offset: -1 | 1): T[] {
-  const target = index + offset
-  const copy = [...items]
-  const [item] = copy.splice(index, 1)
-  if (item === undefined || target < 0 || target > items.length - 1) return [...items]
-  copy.splice(target, 0, item)
-  return copy
-}
 
 function editList(state: ConfigFormState, listPath: string, edit: (draft: Config) => Config): ConfigFormState {
   if (state.draft === null) return state
@@ -250,40 +216,17 @@ export function setUsageBased(state: ConfigFormState, index: number, on: boolean
 // ---- Issues and saving ----------------------------------------------------------------------------
 
 export function textIssues(state: ConfigFormState): ConfigIssue[] {
-  return Object.entries(state.texts).flatMap(([path, text]) => {
-    const parsed = parseNumberText(text)
-    if (parsed.kind === 'invalid') return [{ path, message: parsed.message }]
-    if (parsed.kind === 'empty' && !NULLABLE_NUMBER.test(path)) return [{ path, message: VALUE_REQUIRED }]
-    return []
-  })
+  return typedTextIssues(state.texts, (path) => NULLABLE_NUMBER.test(path))
 }
 
 export function schemaIssues(config: Config): ConfigIssue[] {
-  const result = ConfigSchema.safeParse(config)
-  return result.success ? [] : result.error.issues.map((issue) => ({ path: issue.path.map(String).join('.'), message: issue.message }))
+  return issuesOf(ConfigSchema.safeParse(config).error)
 }
 
-// Every issue that blocks saving. At a field whose text does not parse, the schema would be judging
-// the last number that did, not what is on screen, so only the text's own issue is shown there.
+// Every issue that blocks saving.
 export function formIssues(state: ConfigFormState): ConfigIssue[] {
   if (state.draft === null) return []
-  const typed = textIssues(state)
-  const typedPaths = new Set(typed.map((issue) => issue.path))
-  return [...typed, ...schemaIssues(state.draft).filter((issue) => !typedPaths.has(issue.path))]
-}
-
-export function issuesByPath(issues: readonly ConfigIssue[]): ReadonlyMap<string, string[]> {
-  const byPath = new Map<string, string[]>()
-  for (const { path, message } of issues) byPath.set(path, [...(byPath.get(path) ?? []), message])
-  return byPath
-}
-
-export function leafPaths(value: unknown, prefix = ''): string[] {
-  if (typeof value !== 'object' || value === null) return prefix === '' ? [] : [prefix]
-  const entries: [string, unknown][] = Array.isArray(value)
-    ? (value as unknown[]).map((item, index) => [String(index), item])
-    : Object.entries(value as Record<string, unknown>)
-  return entries.flatMap(([key, item]) => leafPaths(item, prefix === '' ? key : `${prefix}.${key}`))
+  return withTextIssuesFirst(textIssues(state), schemaIssues(state.draft))
 }
 
 // Every path the Settings screen shows issues at: each leaf, each list, and the formula as a whole of
@@ -304,8 +247,7 @@ export function otherProblems(draft: Config | null, issues: readonly ConfigIssue
 }
 
 export function numberWarnings(state: ConfigFormState, path: string): string[] {
-  const parsed = parseNumberText(numberText(state, path))
-  return parsed.kind === 'number' && parsed.warning !== null ? [parsed.warning] : []
+  return warningsFor(numberText(state, path))
 }
 
 export function hasChanges(state: ConfigFormState): boolean {

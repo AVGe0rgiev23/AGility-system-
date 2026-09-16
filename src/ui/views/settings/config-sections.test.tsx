@@ -1,11 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { CONFIG_RULE_BREAKS } from '../../../hooks/__fixtures__/config-rule-breaks'
+import { leafPaths } from '../../../hooks/form-paths'
 import {
   configFormView,
   formIssues,
   initialConfigForm,
-  leafPaths,
   locatedPaths,
   READ_ONLY_PATHS,
   setNumberText,
