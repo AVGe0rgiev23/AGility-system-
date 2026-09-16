@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import storeV4 from '../__fixtures__/store-v4.json'
 import { WholeStoreSchema } from '../store'
+import { CURRENT_SCHEMA_VERSION } from '../version'
 import { MigrationError, runMigrations } from './run-migrations'
 import { migrateV4ToV5 } from './v4-to-v5'
 
@@ -41,11 +42,14 @@ describe('migrateV4ToV5', () => {
     expect(migrateV4ToV5(v4Store())).toEqual(expectedV5())
   })
 
-  it('migrates the v4 fixture to a store that validates at version 5, changing nothing Zod would add or strip', () => {
+  it('migrates the v4 fixture through the whole chain to a store that validates, changing nothing Zod would add or strip', () => {
     const migrated = runMigrations(v4Store(), 4)
     expect(WholeStoreSchema.safeParse(migrated).success).toBe(true)
-    expect(migrated.meta.schemaVersion).toBe(5)
-    expect(migrated).toEqual(expectedV5())
+    expect(migrated.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    // Later steps add only what they document; nothing else about the v4 data changes.
+    const expected = expectedV5()
+    at(expected, 'meta').schemaVersion = CURRENT_SCHEMA_VERSION
+    expect(migrated).toEqual(expected)
   })
 
   it('keeps the monthly cost v4 made a usage-based item carry, since removing it would be a repair', () => {

@@ -6,6 +6,8 @@ import { OpportunitySchema } from './opportunity'
 import { ProcessSchema } from './process'
 import { ArtifactSetSchema, ProjectSchema, ProjectScopeSchema } from './scope'
 
+const IsoDateSchema = z.iso.date()
+
 export const StageSchema = z.enum([
   'LEAD',
   'TEARDOWN',
@@ -70,8 +72,28 @@ export const EngagementSchema = z.object({
   nextAction: z
     .object({
       text: z.string(),
+      // A calendar date, YYYY-MM-DD, so due dates compare as strings.
       due: z.string().optional(),
     })
     .nullable(),
+}).superRefine((engagement, ctx) => {
+  // The list filters by tag, so a blank tag or the same tag twice would filter nothing sensible.
+  const seen = new Set<string>()
+  for (const [index, tag] of engagement.tags.entries()) {
+    if (tag.trim() === '') {
+      ctx.addIssue({ code: 'custom', path: ['tags', index], message: 'A tag cannot be blank' })
+    } else if (seen.has(tag)) {
+      ctx.addIssue({ code: 'custom', path: ['tags', index], message: `The tag '${tag}' is already used` })
+    }
+    seen.add(tag)
+  }
+  const { nextAction } = engagement
+  if (nextAction === null) return
+  if (nextAction.text.trim() === '') {
+    ctx.addIssue({ code: 'custom', path: ['nextAction', 'text'], message: 'A next action needs text' })
+  }
+  if (nextAction.due !== undefined && !IsoDateSchema.safeParse(nextAction.due).success) {
+    ctx.addIssue({ code: 'custom', path: ['nextAction', 'due'], message: `'${nextAction.due}' is not a calendar date written as YYYY-MM-DD` })
+  }
 })
 export type Engagement = z.infer<typeof EngagementSchema>

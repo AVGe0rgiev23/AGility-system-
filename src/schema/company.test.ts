@@ -49,6 +49,17 @@ describe('ContactSchema and TimestampedNoteSchema', () => {
     expect(TimestampedNoteSchema.parse(timestampedNote())).toEqual(timestampedNote())
   })
 
+  it('require a contact name that is not blank', () => {
+    expect(issuePaths(ContactSchema, { ...contact(), name: ' ' })).toEqual(['name'])
+  })
+
+  it('accept a contact email only as a valid address, when present', () => {
+    expect(issuePaths(ContactSchema, { ...contact(), email: 'marta@rila.bg' })).toEqual([])
+    for (const email of ['', 'marta@', 'marta rila.bg']) {
+      expect(issuePaths(ContactSchema, { ...contact(), email }), email).toEqual(['email'])
+    }
+  })
+
   it('require isDecisionMaker and tags', () => {
     const { isDecisionMaker: _a, ...noDecisionFlag } = contact()
     const { tags: _b, ...noTags } = timestampedNote()
@@ -94,6 +105,31 @@ describe('CompanySchema', () => {
 
   it('survives a JSON round trip unchanged', () => {
     expect(CompanySchema.parse(roundTrip(company()))).toEqual(company())
+  })
+
+  it('requires a name that is not blank', () => {
+    for (const name of ['', '   ']) {
+      expect(issuePaths(CompanySchema, { ...company(), name }), JSON.stringify(name)).toEqual(['name'])
+    }
+    expect(CompanySchema.safeParse({ ...company(), name: '' }).error?.issues.map((issue) => issue.message)).toEqual(['The company needs a name'])
+  })
+
+  it('accepts a website only as an http:// or https:// URL with a domain, when present', () => {
+    for (const website of ['https://rila.bg', 'http://solo-bakery.bg/menu']) {
+      expect(issuePaths(CompanySchema, { ...company(), website }), website).toEqual([])
+    }
+    for (const website of ['', 'rila.bg', 'ftp://rila.bg', 'https://localhost', ' https://rila.bg', 'javascript:alert(1)']) {
+      expect(issuePaths(CompanySchema, { ...company(), website }), website).toEqual(['website'])
+    }
+  })
+
+  it('accepts an employee count only as a whole number of at least 0, when present', () => {
+    for (const employeeCount of [0, 1, 250]) {
+      expect(issuePaths(CompanySchema, { ...company(), employeeCount }), String(employeeCount)).toEqual([])
+    }
+    for (const employeeCount of [-1, 2.5]) {
+      expect(issuePaths(CompanySchema, { ...company(), employeeCount }), String(employeeCount)).toEqual(['employeeCount'])
+    }
   })
 
   it('infers the spec types', () => {

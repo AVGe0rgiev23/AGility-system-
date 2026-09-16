@@ -77,6 +77,32 @@ describe('EngagementSchema', () => {
     ])
   })
 
+  it('requires next action text that is not blank, and a due date that is a real YYYY-MM-DD date', () => {
+    expect(issuePaths(EngagementSchema, { ...engagement(), nextAction: { text: ' ' } })).toEqual(['nextAction.text'])
+    expect(issuePaths(EngagementSchema, { ...engagement(), nextAction: { text: 'Call Marta' } })).toEqual([])
+    for (const due of ['2028-02-29', '2026-12-31']) {
+      expect(issuePaths(EngagementSchema, { ...engagement(), nextAction: { text: 'Call', due } }), due).toEqual([])
+    }
+    for (const due of ['', '2026-02-29', '2026-9-18', '18/09/2026', '2026-09-18T09:00:00Z']) {
+      expect(issuePaths(EngagementSchema, { ...engagement(), nextAction: { text: 'Call', due } }), due).toEqual(['nextAction.due'])
+    }
+  })
+
+  it('refuses a blank tag and a repeated tag, at the later one', () => {
+    expect(issuePaths(EngagementSchema, { ...engagement(), tags: ['logistics', ' ', 'bg'] })).toEqual(['tags.1'])
+    expect(issuePaths(EngagementSchema, { ...engagement(), tags: ['logistics', 'bg', 'logistics'] })).toEqual(['tags.2'])
+    expect(issuePaths(EngagementSchema, { ...engagement(), tags: ['logistics', 'Logistics'] })).toEqual([])
+  })
+
+  it('reports a company rule and an engagement rule together', () => {
+    const record = engagement()
+    expect(issuePaths(EngagementSchema, { ...record, company: { ...record.company, name: '' }, tags: ['', ''] })).toEqual([
+      'company.name',
+      'tags.0',
+      'tags.1',
+    ])
+  })
+
   it('requires scope and project to be present, even as null', () => {
     const { scope: _a, project: _b, ...withoutBoth } = newEngagement()
     expect(issuePaths(EngagementSchema, withoutBoth)).toEqual(['scope', 'project'])

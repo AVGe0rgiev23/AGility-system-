@@ -38,8 +38,8 @@ describe('MetaSchema', () => {
 })
 
 describe('CURRENT_SCHEMA_VERSION', () => {
-  it('is v5, and a valid Meta version', () => {
-    expect(CURRENT_SCHEMA_VERSION).toBe(5)
+  it('is v6, and a valid Meta version', () => {
+    expect(CURRENT_SCHEMA_VERSION).toBe(6)
     expect(issuePaths(MetaSchema, { ...meta(), schemaVersion: CURRENT_SCHEMA_VERSION })).toEqual([])
   })
 })
