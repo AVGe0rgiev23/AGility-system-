@@ -62,6 +62,12 @@ describe('TracedInput', () => {
     expect(html).toContain('Per month')
   })
 
+  it('writes a form path on the value box only when given one', () => {
+    const withPath = renderToStaticMarkup(<TracedInput label="Blended hourly cost" value={null} currency="EUR" per="hour" path="company.blendedHourlyCost" onChange={ignore} />)
+    expect(/<input[^>]*id="[^"]*-value"[^>]*>/.exec(withPath)?.[0]).toContain('data-config-path="company.blendedHourlyCost"')
+    expect(renderToStaticMarkup(<TracedInput label="Minutes" value={null} unit="minutes" onChange={ignore} />)).not.toContain('data-config-path')
+  })
+
   it('shows no issues before the field has been left, even when a required value is missing', () => {
     const html = renderToStaticMarkup(<TracedInput label="Occurrences" value={null} unit="count/month" required onChange={ignore} />)
     expect(html).not.toContain('role="alert"')
