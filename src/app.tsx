@@ -4,6 +4,7 @@ import { AppShell } from './ui/shell/app-shell'
 import { useRoute, type Route } from './ui/shell/router'
 import { StoreLoading, StoreNotices, StoreRefusal } from './ui/shell/store-status'
 import { DEFAULT_LIST_PREFS, EngagementListView, type EngagementListPrefs } from './ui/views/engagements/engagement-list-view'
+import { EngagementView } from './ui/views/engagements/engagement-view'
 import { PlaceholderView } from './ui/views/placeholder-view'
 import { PrimitivesView } from './ui/views/primitives-view'
 import { SettingsView } from './ui/views/settings/settings-view'
@@ -30,7 +31,7 @@ function Page({ route, loaded, handle, appVersion, listPrefs, onListPrefs }: Pag
         />
       )
     case 'engagement':
-      return <PlaceholderView title={`Engagement ${route.id}`} detail="Engagement detail is built in Stage 1, task 2." />
+      return <EngagementView loaded={loaded} id={route.id} tab={route.tab} handle={handle} />
     case 'settings':
       return <SettingsView loaded={loaded} handle={handle} appVersion={appVersion} />
     case 'primitives':
