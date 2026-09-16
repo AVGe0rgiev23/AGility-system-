@@ -59,7 +59,7 @@ src/
   storage/      db.ts, repository.ts, derived.ts, sync.ts, transfer.ts
   engines/      scoring, roi, estimate, run-cost, calibration, signals
   render/       view-model, resolve, template, overrides, nodes; print layout (Stage 3)
-  hooks/        useStore, useTracedDraft; useEngagement, useLibrary, useConfig, useDerived
+  hooks/        useStore, useTracedDraft, useConfigForm, useTransferFlow; useEngagement, useLibrary, useConfig, useDerived
   ui/           shell/, primitives/, views/
   app.tsx
 ```
@@ -297,6 +297,67 @@ element's title.
   the draft does not stand for, so an echoed value keeps the typed text and an
   invalid draft is never overwritten. The parent must apply `onChange` before the
   next keystroke, as synchronous React state does.
+
+**Settings** edits every Config field on one screen (`ui/views/settings/`). Its
+rules live in `hooks/use-config-form.ts` as pure functions; the rules about the
+data stay in `ConfigSchema`, and the screen only places their messages.
+
+- **Every field is addressed by its path**, such as `pricing.bands.1.floor`. The
+  control carries the path as `data-config-path`, and it is the path
+  `ConfigSchema` reports an issue at, so each issue shows under the control that
+  fixes it.
+  - A rule about a whole list shows under that list's table.
+  - An issue with no field of its own is listed under "Other problems" at the
+    top, so none is hidden.
+  - A test breaks each rule in DATA-MODEL's Validation table and finds every
+    issue under its control. It also holds the rendered paths to exactly the set
+    the form model places issues at.
+- **Numbers** are plain `NumberInput`s. Config values are definitions, not
+  client figures, so they have no source. The typed text is kept and parsed by
+  `parseNumberText`, with TracedInput's refusals and dot warning.
+  - Text that does not parse never reaches the draft, so the schema's rules
+    always run on valid types. At such a field only the text's own issue shows.
+  - Empty text on a band's max hours, floor or ceiling is `null`.
+  - A new run-cost item's monthly cost, and each of the five fields of a new
+    usage formula, start as empty text: a blocking "value required", never a
+    silent zero. Turning usage pricing off removes the formula.
+  - Adding, removing or moving an item in a list drops typed text under that
+    list, since its indices shift.
+- **Fractions are edited as stored**, `0.2`, with the percent in the label:
+  "Testing overhead (20%)". The percent is read from the text now, and is absent
+  while the text does not parse. A typed percent is never converted; `20` reads
+  as 2,000% and the rule refuses it.
+- **Four leaves are read-only**, each shown with its reason: `agencyCurrency`,
+  `fxRates.rates.EUR`, `storage.syncFolderHandleId` and `storage.lastSyncAt`.
+  Saving takes the last two from storage rather than the form, because a connect
+  or a mirror write after the screen was opened changes them there.
+- **Save** is enabled only for a change with no issues. It saves, then reloads the
+  store, which recomputes every cache that reads Config, and resets the form.
+  There is no navigation guard; the save bar says when changes are unsaved.
+- **A stored Config that does not validate** shows why and offers "Start from
+  defaults", which only fills the form. Nothing is written until Save.
+- **Import and restore from folder** are one flow, `hooks/use-transfer-flow.ts`:
+  idle, preparing, then prepared or refused, then applying, then loaded.
+  - The diff shows the schema versions and any migration, the changed Config
+    keys, that this machine's storage block is kept, and each record added,
+    removed or changed.
+  - The confirm button names the counts: "Replace the whole store: 1 added, 1
+    removed, 1 changed". The Config counts as one record.
+  - When anything is removed or changed, an acknowledgement must be ticked first.
+    "Export the current store first" sits beside the button, and unsaved Settings
+    edits are named as discarded.
+  - A refusal shows its reason and its paths, issues, file errors or ids.
+  - A preparation that finishes after being cancelled or superseded is dropped.
+    A store being replaced cannot be cancelled.
+  - Restore picks a mirrored folder with the same picker as connecting, and is
+    offered only where the browser has one.
+- **The folder panel** shows the folder's state, last sync and stale folders to
+  delete by hand. It offers connect, reconnect, disconnect and sync now; sync now
+  is the only way to write the folder when mirroring on every write is off.
+  Without the File System Access API it points to export and import.
+- **The store panel** shows the stored and supported schema versions, the running
+  app version and the one that created or last migrated the store, and the
+  store's times. Export downloads every stored record through a Blob URL.
 
 ## Security model
 
