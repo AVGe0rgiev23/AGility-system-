@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { SyncStatus } from '../../../storage/sync'
 import { Table } from '../../primitives/table'
-import { BUTTON, SettingsSection } from './config-controls'
+import { BUTTON, FormSection } from '../form-controls'
 
 export type FolderAction = 'connect' | 'reconnect' | 'sync' | 'disconnect'
 
@@ -50,7 +50,7 @@ export function FolderPanel({ sync, syncError, onAction }: FolderPanelProps) {
   const actions = folderActions(sync)
 
   return (
-    <SettingsSection id="settings-folder" title="Folder">
+    <FormSection id="settings-folder" title="Folder">
       <dl>
         <Row label="Status">
           <span className={`num ${sync.kind === 'connected' ? '' : sync.kind === 'error' ? 'text-danger' : 'text-warn'}`}>{sync.kind}</span>
@@ -109,6 +109,6 @@ export function FolderPanel({ sync, syncError, onAction }: FolderPanelProps) {
           </p>
         </div>
       )}
-    </SettingsSection>
+    </FormSection>
   )
 }

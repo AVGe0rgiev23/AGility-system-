@@ -2,7 +2,7 @@ import type { ChangeEvent, ReactNode } from 'react'
 import type { TransferFlow } from '../../../hooks/use-transfer-flow'
 import type { Meta } from '../../../schema/meta'
 import { CURRENT_SCHEMA_VERSION } from '../../../schema/version'
-import { BUTTON, SettingsSection } from './config-controls'
+import { BUTTON, FormSection } from '../form-controls'
 import { ImportDiff } from './import-diff'
 
 // The store as a whole: its versions and times, export, import from a file and restore from a mirrored
@@ -46,7 +46,7 @@ export function StorePanel(props: StorePanelProps) {
   }
 
   return (
-    <SettingsSection id="settings-store" title="Store">
+    <FormSection id="settings-store" title="Store">
       <dl>
         <Row label="Schema version">
           v{meta.schemaVersion}
@@ -92,6 +92,6 @@ export function StorePanel(props: StorePanelProps) {
         onCancel={props.onCancel}
         onExportFirst={props.onExport}
       />
-    </SettingsSection>
+    </FormSection>
   )
 }
