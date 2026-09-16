@@ -5,6 +5,7 @@ import type { Engagement } from '../../../schema/engagement'
 import { hrefFor, navigate } from '../../shell/router'
 import { OtherProblems, SaveBar } from '../form-controls'
 import { CompanyTab } from './company-tab'
+import { ContactsTab } from './contacts-tab'
 import { OverviewTab, type Deletion } from './overview-tab'
 
 type LoadedStore = Extract<BootedStore, { phase: 'loaded' }>
@@ -20,6 +21,7 @@ interface TabDefinition {
 export const ENGAGEMENT_TABS: readonly TabDefinition[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'company', label: 'Company' },
+  { id: 'contacts', label: 'Contacts' },
   { id: 'discovery', label: 'Discovery', placeholder: 'Question sets and discovery sessions are built in Stage 1, tasks 5 to 7.' },
   { id: 'processes', label: 'Processes', placeholder: 'Process mapping is built in Stage 1, task 8.' },
   { id: 'opportunities', label: 'Opportunities', placeholder: 'Opportunity capture is built in Stage 1, task 9, and scoring in Stage 2, task 10.' },
@@ -120,6 +122,8 @@ export function EngagementScreen({ form, tab, saving, saveError, onSave, deletio
           <OverviewTab form={form} deletion={deletion} />
         ) : active.id === 'company' ? (
           <CompanyTab form={form} industries={industries} />
+        ) : active.id === 'contacts' ? (
+          <ContactsTab form={form} />
         ) : null}
       </div>
     </section>
