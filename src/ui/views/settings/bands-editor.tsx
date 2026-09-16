@@ -21,44 +21,46 @@ export function BandsEditor({ form, bands }: { form: ConfigFormView; bands: read
       addLabel="Add band"
       onAdd={form.addBand}
     >
-      <Table
-        caption="Pricing bands"
-        columns={[
-          { id: 'id', header: 'Id', cell: ({ band, index }) => <TextField form={form} path={at(index, 'id')} label={`Id of ${bandName(band, index)}`} layout="cell" width="w-32" /> },
-          { id: 'name', header: 'Name', cell: ({ band, index }) => <TextField form={form} path={at(index, 'name')} label={`Name of ${bandName(band, index)}`} layout="cell" width="w-40" /> },
-          {
-            id: 'maxHours',
-            header: 'Max hours',
-            cell: ({ band, index }) => <NumberField form={form} path={at(index, 'maxHours')} label={`Max hours of ${bandName(band, index)}`} unit="hours" nullable layout="cell" />,
-          },
-          {
-            id: 'floor',
-            header: 'Floor',
-            cell: ({ band, index }) => <NumberField form={form} path={at(index, 'floor')} label={`Floor of ${bandName(band, index)}`} unit="EUR" nullable layout="cell" />,
-          },
-          {
-            id: 'ceiling',
-            header: 'Ceiling',
-            cell: ({ band, index }) => <NumberField form={form} path={at(index, 'ceiling')} label={`Ceiling of ${bandName(band, index)}`} unit="EUR" nullable layout="cell" />,
-          },
-          {
-            id: 'actions',
-            header: '',
-            cell: ({ band, index }) => (
-              <RowActions
-                name={bandName(band, index)}
-                index={index}
-                count={bands.length}
-                onMove={(offset) => form.moveBand(index, offset)}
-                onRemove={() => form.removeBand(index)}
-              />
-            ),
-          },
-        ]}
-        rows={rows}
-        rowKey={({ index }) => String(index)}
-        empty="No bands. Estimation needs at least the unbounded custom band."
-      />
+      <div className="overflow-x-auto">
+        <Table
+          caption="Pricing bands"
+          columns={[
+            { id: 'id', header: 'Id', cell: ({ band, index }) => <TextField form={form} path={at(index, 'id')} label={`Id of ${bandName(band, index)}`} layout="cell" width="w-32" /> },
+            { id: 'name', header: 'Name', cell: ({ band, index }) => <TextField form={form} path={at(index, 'name')} label={`Name of ${bandName(band, index)}`} layout="cell" width="w-40" /> },
+            {
+              id: 'maxHours',
+              header: 'Max hours',
+              cell: ({ band, index }) => <NumberField form={form} path={at(index, 'maxHours')} label={`Max hours of ${bandName(band, index)}`} unit="hours" nullable layout="cell" />,
+            },
+            {
+              id: 'floor',
+              header: 'Floor',
+              cell: ({ band, index }) => <NumberField form={form} path={at(index, 'floor')} label={`Floor of ${bandName(band, index)}`} unit="EUR" nullable layout="cell" />,
+            },
+            {
+              id: 'ceiling',
+              header: 'Ceiling',
+              cell: ({ band, index }) => <NumberField form={form} path={at(index, 'ceiling')} label={`Ceiling of ${bandName(band, index)}`} unit="EUR" nullable layout="cell" />,
+            },
+            {
+              id: 'actions',
+              header: '',
+              cell: ({ band, index }) => (
+                <RowActions
+                  name={bandName(band, index)}
+                  index={index}
+                  count={bands.length}
+                  onMove={(offset) => form.moveBand(index, offset)}
+                  onRemove={() => form.removeBand(index)}
+                />
+              ),
+            },
+          ]}
+          rows={rows}
+          rowKey={({ index }) => String(index)}
+          empty="No bands. Estimation needs at least the unbounded custom band."
+        />
+      </div>
     </ConfigList>
   )
 }

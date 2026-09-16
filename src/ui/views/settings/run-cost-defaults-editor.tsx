@@ -37,7 +37,7 @@ function FormulaCell({ form, row }: { form: ConfigFormView; row: Row }) {
   const issues = form.issuesAt(`runCostDefaults.${row.index}.usageFormula`)
   return (
     <div>
-      <span id={id} data-config-path={`runCostDefaults.${row.index}.usageFormula`} aria-describedby={fieldDescriptionId(id)} className="text-sm">
+      <span id={id} data-config-path={`runCostDefaults.${row.index}.usageFormula`} aria-describedby={fieldDescriptionId(id)} className="text-sm whitespace-nowrap">
         {row.name}
       </span>
       {row.item.usageFormula === undefined ? (
@@ -112,7 +112,7 @@ export function RunCostDefaultsEditor({ form, items }: { form: ConfigFormView; i
           <Table
             caption="Who pays for each run-cost item, by delivery model"
             columns={[
-              { id: 'item', header: 'Item', cell: ({ name }) => <span className="text-sm">{name}</span> },
+              { id: 'item', header: 'Item', cell: ({ name }) => <span className="text-sm whitespace-nowrap">{name}</span> },
               ...DeliveryModelSchema.options.map((model) => ({
                 id: model,
                 header: model,
