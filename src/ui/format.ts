@@ -19,3 +19,10 @@ export function formatTraced(traced: TracedValue): string {
 export function isRounded(value: number, currency?: Currency): boolean {
   return Number(formatNumber(value, currency).replace(/,/g, '')) !== value
 }
+
+// Today on the clock of the machine in front of Alex, as YYYY-MM-DD. Due dates are calendar dates in
+// his time zone, so "due today" must not flip over at midnight UTC.
+export function localToday(now: Date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}

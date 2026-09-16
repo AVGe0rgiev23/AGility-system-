@@ -48,3 +48,7 @@ export function useRoute(): Route {
   const hash = useSyncExternalStore(subscribe, () => window.location.hash)
   return useMemo(() => parseRoute(hash), [hash])
 }
+
+export function navigate(target: RouteTarget): void {
+  window.location.hash = hrefFor(target)
+}
