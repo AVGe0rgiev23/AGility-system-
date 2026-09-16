@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatNumber, formatTraced, isRounded, localToday } from './format'
+import { formatNumber, formatTraced, isRounded, localDate } from './format'
 
 describe('formatNumber', () => {
   it('prints money, told by its currency, with exactly two decimals and grouping', () => {
@@ -37,9 +37,9 @@ describe('isRounded', () => {
   })
 })
 
-describe('localToday', () => {
+describe('localDate', () => {
   it('writes the local calendar date as YYYY-MM-DD', () => {
-    expect(localToday(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05')
-    expect(localToday(new Date(2026, 11, 31, 0, 1))).toBe('2026-12-31')
+    expect(localDate(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05')
+    expect(localDate(new Date(2026, 11, 31, 0, 1))).toBe('2026-12-31')
   })
 })

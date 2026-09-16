@@ -68,6 +68,15 @@ describe('EngagementListScreen', () => {
     expect(html).toContain('<option value="due">due today or earlier</option>')
   })
 
+  it('names each filter by its label alone', () => {
+    const html = render()
+    for (const label of ['Stage', 'Tag', 'Next action']) {
+      const id = new RegExp(`<label for="([^"]+)">${label}</label>`).exec(html)?.[1]
+      expect(id, label).toBeDefined()
+      expect(html, label).toContain(`<select id="${id ?? ''}"`)
+    }
+  })
+
   it('marks a due date of today or earlier in the warn colour', () => {
     const html = render()
     expect(html).toContain('<span class="num text-warn" title="Due today or earlier">2026-09-15</span>')
@@ -112,6 +121,14 @@ describe('NewEngagementForm', () => {
     expect(html).toContain('<option value="" disabled="" selected="">where it came from</option>')
     expect(html).toContain('<option value="E-commerce">E-commerce</option>')
     expect(html).not.toContain('role="alert"')
+  })
+
+  it('does not mark the industry required, since the schema accepts none', () => {
+    const html = form()
+    const industry = /<select[^>]*data-config-path="company.industry"[^>]*>/.exec(html)?.[0] ?? ''
+    expect(industry).toContain('aria-required="false"')
+    expect(html).toContain('>Industry</label>')
+    expect(html).toContain('<option value="" selected="">choose an industry</option>')
   })
 
   it('takes the industry as text when the stored Config is unusable', () => {

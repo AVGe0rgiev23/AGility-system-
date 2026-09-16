@@ -20,22 +20,22 @@ export interface NewEngagementFormProps {
   onCancel: () => void
 }
 
-function Choice({ label, path, value, options, placeholder, issues, onChange }: { label: string; path: string; value: string; options: readonly string[]; placeholder?: string; issues: readonly string[]; onChange: (value: string) => void }) {
+function Choice({ label, path, value, options, placeholder, issues, required = true, onChange }: { label: string; path: string; value: string; options: readonly string[]; placeholder?: string; issues: readonly string[]; required?: boolean; onChange: (value: string) => void }) {
   const id = useId()
   return (
-    <Field label={label} htmlFor={id} issues={issues} required>
+    <Field label={label} htmlFor={id} issues={issues} required={required}>
       <select
         id={id}
         data-config-path={path}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-invalid={issues.length > 0}
-        aria-required="true"
+        aria-required={required}
         aria-describedby={fieldDescriptionId(id)}
         className={`${CONTROL} num ${value === '' ? 'text-muted' : ''} ${issues.length > 0 ? 'border-danger' : ''}`}
       >
         {placeholder === undefined ? null : (
-          <option value="" disabled>
+          <option value="" disabled={required}>
             {placeholder}
           </option>
         )}
@@ -50,10 +50,10 @@ function Choice({ label, path, value, options, placeholder, issues, onChange }: 
   )
 }
 
-function Text({ label, path, value, issues, onChange }: { label: string; path: string; value: string; issues: readonly string[]; onChange: (value: string) => void }) {
+function Text({ label, path, value, issues, required = true, onChange }: { label: string; path: string; value: string; issues: readonly string[]; required?: boolean; onChange: (value: string) => void }) {
   const id = useId()
   return (
-    <Field label={label} htmlFor={id} issues={issues} required>
+    <Field label={label} htmlFor={id} issues={issues} required={required}>
       <input
         id={id}
         type="text"
@@ -62,7 +62,7 @@ function Text({ label, path, value, issues, onChange }: { label: string; path: s
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-invalid={issues.length > 0}
-        aria-required="true"
+        aria-required={required}
         aria-describedby={fieldDescriptionId(id)}
         className={`${CONTROL} w-72 max-w-full ${issues.length > 0 ? 'border-danger' : ''}`}
       />
@@ -82,7 +82,7 @@ export function NewEngagementForm({ draft, industries, issues, message, creating
       </h2>
       <Text label="Company name" path="company.name" value={draft.name} issues={at('company.name')} onChange={(name) => onDraft({ ...draft, name })} />
       {industries === null ? (
-        <Text label="Industry" path="company.industry" value={draft.industry} issues={at('company.industry')} onChange={(industry) => onDraft({ ...draft, industry })} />
+        <Text label="Industry" path="company.industry" value={draft.industry} issues={at('company.industry')} required={false} onChange={(industry) => onDraft({ ...draft, industry })} />
       ) : (
         <Choice
           label="Industry"
@@ -91,6 +91,7 @@ export function NewEngagementForm({ draft, industries, issues, message, creating
           options={industries}
           placeholder="choose an industry"
           issues={at('company.industry')}
+          required={false}
           onChange={(industry) => onDraft({ ...draft, industry })}
         />
       )}

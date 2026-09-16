@@ -1,8 +1,8 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { filterEngagements, NO_FILTER, stageOrder, tagOptions, type EngagementFilter, type NextActionFilter, type NewEngagementDraft } from '../../../hooks/use-engagement-list'
 import type { CreateResult } from '../../../hooks/use-store'
 import { StageSchema, type Engagement } from '../../../schema/engagement'
-import { localToday } from '../../format'
+import { localDate } from '../../format'
 import { Table, type Column } from '../../primitives/table'
 import { hrefFor, navigate } from '../../shell/router'
 import type { SortState } from '../../table-sort'
@@ -66,7 +66,7 @@ function columns(today: string): Column<Engagement>[] {
       header: 'Updated',
       cell: (engagement) => (
         <span className="num text-muted" title={engagement.updatedAt}>
-          {engagement.updatedAt.slice(0, 10)}
+          {localDate(new Date(engagement.updatedAt))}
         </span>
       ),
       sortValue: (engagement) => engagement.updatedAt,
@@ -76,17 +76,19 @@ function columns(today: string): Column<Engagement>[] {
 }
 
 function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: readonly { value: string; label: string }[]; onChange: (value: string) => void }) {
+  const id = useId()
   return (
-    <label className="flex items-center gap-1.5 text-sm text-muted">
-      {label}
-      <select value={value} onChange={(event) => onChange(event.target.value)} className={`${CONTROL} num`}>
+    <span className="flex items-center gap-1.5 text-sm text-muted">
+      {/* Tied by id rather than wrapped, so the select's name is the label alone, not the label plus its options. */}
+      <label htmlFor={id}>{label}</label>
+      <select id={id} value={value} onChange={(event) => onChange(event.target.value)} className={`${CONTROL} num`}>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
       </select>
-    </label>
+    </span>
   )
 }
 
@@ -186,7 +188,7 @@ export function EngagementListView({ engagements, industries, prefs, onPrefs, cr
     <EngagementListScreen
       engagements={engagements}
       prefs={prefs}
-      today={localToday()}
+      today={localDate()}
       onPrefs={onPrefs}
       onNew={() => setCreating(true)}
       panel={
