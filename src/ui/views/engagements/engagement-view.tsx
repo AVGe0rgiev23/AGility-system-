@@ -4,6 +4,7 @@ import type { BootedStore, StoreHandle } from '../../../hooks/use-store'
 import type { Engagement } from '../../../schema/engagement'
 import { hrefFor, navigate } from '../../shell/router'
 import { OtherProblems, SaveBar } from '../form-controls'
+import { CompanyTab } from './company-tab'
 import { OverviewTab, type Deletion } from './overview-tab'
 
 type LoadedStore = Extract<BootedStore, { phase: 'loaded' }>
@@ -18,6 +19,7 @@ interface TabDefinition {
 // One tab per section of the engagement record, so each has an address before it is built.
 export const ENGAGEMENT_TABS: readonly TabDefinition[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'company', label: 'Company' },
   { id: 'discovery', label: 'Discovery', placeholder: 'Question sets and discovery sessions are built in Stage 1, tasks 5 to 7.' },
   { id: 'processes', label: 'Processes', placeholder: 'Process mapping is built in Stage 1, task 8.' },
   { id: 'opportunities', label: 'Opportunities', placeholder: 'Opportunity capture is built in Stage 1, task 9, and scoring in Stage 2, task 10.' },
@@ -40,6 +42,8 @@ export interface EngagementScreenProps {
   saveError: string | null
   onSave: () => void
   deletion: Deletion
+  // Null when the stored Config is unusable.
+  industries: readonly string[] | null
 }
 
 function TabNav({ form, active }: { form: EngagementFormView; active: string | undefined }) {
@@ -73,7 +77,7 @@ function TabNav({ form, active }: { form: EngagementFormView; active: string | u
 }
 
 // The screen, given everything it shows. EngagementDetail holds the state; this only renders it.
-export function EngagementScreen({ form, tab, saving, saveError, onSave, deletion }: EngagementScreenProps) {
+export function EngagementScreen({ form, tab, saving, saveError, onSave, deletion, industries }: EngagementScreenProps) {
   const { saved } = form
   const active = ENGAGEMENT_TABS.find((candidate) => candidate.id === (tab ?? 'overview'))
 
@@ -114,6 +118,8 @@ export function EngagementScreen({ form, tab, saving, saveError, onSave, deletio
           <p className="px-4 py-3 text-sm text-muted">{active.placeholder}</p>
         ) : active.id === 'overview' ? (
           <OverviewTab form={form} deletion={deletion} />
+        ) : active.id === 'company' ? (
+          <CompanyTab form={form} industries={industries} />
         ) : null}
       </div>
     </section>
@@ -128,9 +134,10 @@ interface EngagementDetailProps {
   engagement: Engagement
   tab: string | null
   handle: Pick<StoreHandle, 'saveEngagement' | 'deleteEngagement'>
+  industries: readonly string[] | null
 }
 
-function EngagementDetail({ engagement, tab, handle }: EngagementDetailProps) {
+function EngagementDetail({ engagement, tab, handle, industries }: EngagementDetailProps) {
   const form = useEngagementForm(engagement)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -165,6 +172,7 @@ function EngagementDetail({ engagement, tab, handle }: EngagementDetailProps) {
     <EngagementScreen
       form={form}
       tab={tab}
+      industries={industries}
       saving={saving}
       saveError={saveError}
       onSave={() => void save()}
@@ -225,5 +233,5 @@ export function EngagementView({ loaded, id, tab, handle }: EngagementViewProps)
     return <EngagementNotFound id={id} storedButInvalid={storedButInvalid} />
   }
   // Keyed by id, so moving to another engagement starts its own form and confirmation state.
-  return <EngagementDetail key={id} engagement={engagement} tab={tab} handle={handle} />
+  return <EngagementDetail key={id} engagement={engagement} tab={tab} handle={handle} industries={loaded.load.store.config?.industries ?? null} />
 }

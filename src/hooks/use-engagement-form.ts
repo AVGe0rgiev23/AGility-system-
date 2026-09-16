@@ -179,7 +179,8 @@ function editList(state: EngagementFormState, path: string, items: unknown[]): E
   }
 }
 
-// A new entry starts blank, which the schema refuses until it is filled in or removed.
+// A new entry starts blank. A blank tag is refused by the schema; a blank stated tool or compliance
+// entry is not, and saves as typed.
 export function addToList(state: EngagementFormState, path: StringList): EngagementFormState {
   return editList(state, path, [...listAt(state, path), ''])
 }
