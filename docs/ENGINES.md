@@ -508,7 +508,7 @@ interface RunCostLineItem {
   label: string
   category: 'hosting' | 'database' | 'scheduler' | 'ai' | 'monitoring'
            | 'domain' | 'third-party' | 'other'
-  monthlyCost: number               // EUR, ignored when usageBased
+  monthlyCost: number | null        // EUR; required unless usageBased, ignored when usageBased
   paidBy: Record<DeliveryModel, 'client' | 'agency' | 'not-applicable'>
   notes?: string
   usageBased: boolean
@@ -526,6 +526,12 @@ interface RunCostLineItem {
 is priced from the formula alone. The schema rejects a usage-based item without
 one.
 
+`monthlyCost` is required only when `usageBased` is false, and may be `null` on a
+usage-based item, where it is ignored. A figure that is required and then
+ignored invites a plausible number typed only to get past the field, which the
+item would inherit the day it stops being usage-based. The schema rejects a
+fixed item with a `null` cost.
+
 ```
 itemMonthly = usageBased
   ? (callsPerMonth × avgInputTokens  / 1_000_000 × inputPricePerMTok)
@@ -539,6 +545,10 @@ agencyAnnual  = agencyMonthly × 12
 
 A usage-based item that reaches the engine without a formula prices at 0 and
 raises `MISSING_USAGE_FORMULA`.
+
+A fixed item that reaches the engine with a `null` `monthlyCost` throws, naming
+the item. It has no price at all, and pricing it at 0 would put a run cost nobody
+set into the proposal. RunCostLineItemSchema never produces one.
 
 Under `client-owned`, `agencyMonthly` should be 0.
 `AGENCY_COST_UNDER_CLIENT_OWNED` checks the client-owned column **whatever model

@@ -1,10 +1,12 @@
 import 'fake-indexeddb/auto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { newEngagement, wholeStore } from '../schema/__fixtures__/records'
+import { ConfigSchema, defaultConfig } from '../schema/config'
 import { MemoryFolder } from '../storage/__fixtures__/memory-folder'
-import type { LoadResult } from '../storage/repository'
+import { plant } from '../storage/__fixtures__/raw-idb'
+import { FOLDER_HANDLE_KEY, type LoadResult } from '../storage/repository'
 import { engagementFolderName, type SyncStatus } from '../storage/sync'
-import { bootStore, createStoreRuntime, type StoreRuntime } from './use-store'
+import { afterReload, bootStore, createStoreRuntime, prepareRestore, saveSettings, type StoreRuntime } from './use-store'
 
 const T1 = '2026-09-15T09:00:00.000Z'
 
@@ -89,5 +91,115 @@ describe('bootStore', () => {
       { restore: () => Promise.reject(new Error('the permission query failed')), status: () => ({ kind: 'disconnected' }) },
     )
     expect(booted).toEqual({ phase: 'loaded', load, sync: { kind: 'disconnected' }, syncError: 'the permission query failed' })
+  })
+})
+
+describe('saveSettings', () => {
+  it('saves the Config and reloads the store with it', async () => {
+    runtime = createStoreRuntime({ databaseName: 'settings-save', clock: () => T1, appVersion: '0.1.0', pickFolder: undefined })
+    await runtime.boot()
+    const config = defaultConfig()
+    config.pricing.targetHourlyRate = 72.5
+    config.storage.autoSyncOnWrite = false
+    const load = await saveSettings(runtime.repository, config)
+    expect(load.status).toBe('loaded')
+    if (load.status !== 'loaded') return
+    expect(load.store.config).toEqual(config)
+    expect(ConfigSchema.parse((await runtime.repository.readRawStore()).config)).toEqual(config)
+  })
+
+  it('keeps the folder handle id and last sync time that a connect stored after the form was opened', async () => {
+    const folder = new MemoryFolder('agility-os-data')
+    runtime = createStoreRuntime({ databaseName: 'settings-connect', clock: () => T1, appVersion: '0.1.0', pickFolder: () => Promise.resolve(folder) })
+    const booted = await runtime.boot()
+    if (booted.phase !== 'loaded' || booted.load.store.config === null) throw new Error('expected a loaded Config')
+    const opened = booted.load.store.config
+    expect(opened.storage).toEqual({ syncFolderHandleId: null, autoSyncOnWrite: true, lastSyncAt: null })
+
+    await runtime.sync.connect()
+    const load = await saveSettings(runtime.repository, { ...opened, pricing: { ...opened.pricing, targetHourlyRate: 80 } })
+    if (load.status !== 'loaded' || load.store.config === null) throw new Error('expected a loaded Config')
+    expect(load.store.config.pricing.targetHourlyRate).toBe(80)
+    expect(load.store.config.storage).toEqual({ syncFolderHandleId: FOLDER_HANDLE_KEY, autoSyncOnWrite: true, lastSyncAt: T1 })
+    expect(JSON.parse(folder.read('config.json') ?? 'null')).toMatchObject({ pricing: { targetHourlyRate: 80 } })
+  })
+
+  it('records no folder once disconnected, whatever the form still holds', async () => {
+    const folder = new MemoryFolder('agility-os-data')
+    runtime = createStoreRuntime({ databaseName: 'settings-disconnect', clock: () => T1, appVersion: '0.1.0', pickFolder: () => Promise.resolve(folder) })
+    await runtime.boot()
+    await runtime.sync.connect()
+    const stale = ConfigSchema.parse((await runtime.repository.readRawStore()).config)
+    await runtime.sync.disconnect()
+    const load = await saveSettings(runtime.repository, stale)
+    expect(load).toMatchObject({ status: 'loaded', store: { config: { storage: { syncFolderHandleId: null, lastSyncAt: T1 } } } })
+  })
+
+  it('records a stored folder handle when saving over an unusable stored Config', async () => {
+    const folder = new MemoryFolder('agility-os-data')
+    const databaseName = 'settings-corrupt'
+    runtime = createStoreRuntime({ databaseName, clock: () => T1, appVersion: '0.1.0', pickFolder: () => Promise.resolve(folder) })
+    await runtime.boot()
+    await runtime.sync.connect()
+    await plant(databaseName, [{ table: 'config', key: 'config', value: { pricing: 'not a config' } }])
+    expect(await runtime.repository.load()).toMatchObject({ status: 'loaded', store: { config: null } })
+
+    const load = await saveSettings(runtime.repository, defaultConfig())
+    // The last sync time is the mirror's own record of writing the saved Config to the folder.
+    expect(load).toMatchObject({ status: 'loaded', store: { config: { storage: { syncFolderHandleId: FOLDER_HANDLE_KEY, lastSyncAt: T1 } } } })
+    expect(JSON.parse(folder.read('config.json') ?? 'null')).toMatchObject({ pricing: defaultConfig().pricing })
+  })
+
+  it('throws and writes nothing when the Config does not validate', async () => {
+    runtime = createStoreRuntime({ databaseName: 'settings-invalid', clock: () => T1, appVersion: '0.1.0', pickFolder: undefined })
+    await runtime.boot()
+    const broken = defaultConfig()
+    broken.roi.horizonYears = 2.5
+    await expect(saveSettings(runtime.repository, broken)).rejects.toThrow()
+    expect((await runtime.repository.readRawStore()).config).toEqual(defaultConfig())
+  })
+})
+
+describe('prepareRestore', () => {
+  it('prepares a restore from a chosen mirrored folder, with a diff and nothing written', async () => {
+    const folder = new MemoryFolder('agility-os-data')
+    runtime = createStoreRuntime({ databaseName: 'restore-source', clock: () => T1, appVersion: '0.1.0', pickFolder: () => Promise.resolve(folder) })
+    await runtime.boot()
+    await runtime.sync.connect()
+    await runtime.repository.saveEngagement(newEngagement())
+    runtime.repository.close()
+
+    runtime = createStoreRuntime({ databaseName: 'restore-target', clock: () => T1, appVersion: '0.1.0', pickFolder: () => Promise.resolve(folder) })
+    await runtime.boot()
+    const before = await runtime.repository.readRawStore()
+    const preparation = await prepareRestore(runtime.pickFolder, runtime.repository, T1)
+    expect(preparation).toMatchObject({ ok: true, diff: { engagements: { added: [{ id: newEngagement().id }], removed: [], changed: [] } } })
+    expect(await runtime.repository.readRawStore()).toEqual(before)
+  })
+
+  it('returns null when the browser has no picker or the picker is closed', async () => {
+    const repository = { readRawStore: vi.fn() }
+    expect(await prepareRestore(undefined, repository, T1)).toBeNull()
+    expect(await prepareRestore(() => Promise.reject(new DOMException('closed', 'AbortError')), repository, T1)).toBeNull()
+    expect(repository.readRawStore).not.toHaveBeenCalled()
+  })
+
+  it('passes on any other picker failure', async () => {
+    const repository = { readRawStore: vi.fn() }
+    await expect(prepareRestore(() => Promise.reject(new DOMException('blocked', 'SecurityError')), repository, T1)).rejects.toThrow('blocked')
+  })
+})
+
+describe('afterReload', () => {
+  it('keeps the boot folder error on a loaded store and replaces the page on a refusal', () => {
+    const load = loaded()
+    expect(afterReload(load, { kind: 'unsupported' }, 'the permission query failed')).toEqual({
+      phase: 'loaded',
+      load,
+      sync: { kind: 'unsupported' },
+      syncError: 'the permission query failed',
+    })
+    const refusal: LoadResult = { status: 'refused', reason: 'database-unavailable', message: 'gone', issues: [] }
+    expect(afterReload(refusal, { kind: 'unsupported' }, null)).toEqual({ phase: 'refused', refusal })
   })
 })

@@ -15,8 +15,10 @@ export const RunCostLineItemSchema = z
       'third-party',
       'other',
     ]),
-    // EUR. Ignored when usageBased.
-    monthlyCost: z.number(),
+    // EUR. Required unless usageBased, when the formula prices the item and this is ignored. A
+    // required figure that is then ignored invites a plausible number typed only to get past it,
+    // which the item inherits the day it stops being usage-based.
+    monthlyCost: z.number().nullable(),
     paidBy: z.record(DeliveryModelSchema, z.enum(['client', 'agency', 'not-applicable'])),
     notes: z.string().optional(),
     usageBased: z.boolean(),
@@ -37,6 +39,14 @@ export const RunCostLineItemSchema = z
         code: 'custom',
         path: ['usageFormula'],
         message: 'usageFormula is required when usageBased is true',
+      })
+    }
+    // A fixed item is priced from its monthly cost alone, so it cannot go without one.
+    if (!item.usageBased && item.monthlyCost === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['monthlyCost'],
+        message: 'monthlyCost is required when usageBased is false',
       })
     }
   })

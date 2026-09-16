@@ -17,6 +17,24 @@ describe('RunCostLineItemSchema', () => {
     expect(issuePaths(RunCostLineItemSchema, withoutFormula)).toEqual(['usageFormula'])
   })
 
+  it('requires a monthly cost only when the item is not usage-based', () => {
+    expect(usageRunCostLineItem().monthlyCost).toBeNull()
+    expect(issuePaths(RunCostLineItemSchema, { ...runCostLineItem(), monthlyCost: null })).toEqual(['monthlyCost'])
+    expect(RunCostLineItemSchema.safeParse({ ...runCostLineItem(), monthlyCost: null }).error?.issues.map((issue) => issue.message)).toEqual([
+      'monthlyCost is required when usageBased is false',
+    ])
+    expect(issuePaths(RunCostLineItemSchema, { ...runCostLineItem(), monthlyCost: 0 })).toEqual([])
+  })
+
+  it('still accepts a usage-based item carrying a monthly cost, as every v4 item does', () => {
+    expect(issuePaths(RunCostLineItemSchema, { ...usageRunCostLineItem(), monthlyCost: 0 })).toEqual([])
+  })
+
+  it('refuses a missing monthly cost rather than reading it as null', () => {
+    const { monthlyCost: _omitted, ...withoutCost } = usageRunCostLineItem()
+    expect(issuePaths(RunCostLineItemSchema, withoutCost)).toEqual(['monthlyCost'])
+  })
+
   it('requires a payer for every delivery model', () => {
     const paidBy = { 'fully-managed': 'agency', hybrid: 'client' }
     expect(issuePaths(RunCostLineItemSchema, { ...runCostLineItem(), paidBy })).toEqual([
@@ -37,6 +55,7 @@ describe('RunCostLineItemSchema', () => {
   })
 
   it('infers the spec types', () => {
+    expectTypeOf<RunCostLineItem['monthlyCost']>().toEqualTypeOf<number | null>()
     expectTypeOf<RunCostLineItem['paidBy']>().toEqualTypeOf<
       Record<DeliveryModel, 'client' | 'agency' | 'not-applicable'>
     >()

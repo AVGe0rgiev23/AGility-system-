@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import storeV3 from '../__fixtures__/store-v3.json'
 import { WholeStoreSchema } from '../store'
+import { CURRENT_SCHEMA_VERSION } from '../version'
 import { MigrationError, runMigrations } from './run-migrations'
 import { migrateV3ToV4 } from './v3-to-v4'
 
@@ -42,11 +43,14 @@ describe('migrateV3ToV4', () => {
     expect(migrateV3ToV4(v3Store())).toEqual(expectedV4())
   })
 
-  it('migrates the v3 fixture to a store that validates at version 4, changing nothing Zod would add or strip', () => {
+  it('migrates the v3 fixture through the whole chain to a store that validates, changing nothing Zod would add or strip', () => {
     const migrated = runMigrations(v3Store(), 3)
     expect(WholeStoreSchema.safeParse(migrated).success).toBe(true)
-    expect(migrated.meta.schemaVersion).toBe(4)
-    expect(migrated).toEqual(expectedV4())
+    expect(migrated.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    // Later steps add only what they document; nothing else about the v3 data changes.
+    const expected = expectedV4()
+    at(expected, 'meta').schemaVersion = CURRENT_SCHEMA_VERSION
+    expect(migrated).toEqual(expected)
   })
 
   it('leaves a currency on a unit that is not money in place, so the migration fails with its issue path', () => {

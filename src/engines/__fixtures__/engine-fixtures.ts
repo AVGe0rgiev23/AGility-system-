@@ -237,7 +237,8 @@ export function randomRunCostItem(random: Random, index: number): RunCostLineIte
     id: `rc-${index}`,
     label: `Item ${index}`,
     category: pick(random, ['hosting', 'database', 'scheduler', 'ai', 'monitoring', 'domain', 'third-party', 'other'] as const),
-    monthlyCost: randomNumber(random, 0, 200),
+    // A usage-based item may carry a monthly cost or none; the engine must ignore it either way.
+    monthlyCost: usageBased && random() < 0.5 ? null : randomNumber(random, 0, 200),
     paidBy: { 'fully-managed': payer(), 'client-owned': payer(), hybrid: payer() },
     usageBased,
     ...(usageBased

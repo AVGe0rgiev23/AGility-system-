@@ -23,8 +23,15 @@ type ModelColumn = RunCostResult['perModel'][DeliveryModel]
 
 // A usage-based item is priced from its formula alone; its monthlyCost is ignored. The schema
 // requires the formula, so a missing one is data damage and prices at 0 (with a warning below).
+// A fixed item with no monthly cost is different: it has no price at all, and 0 would be a figure
+// nobody set, so it throws.
 export function itemMonthlyCost(item: RunCostLineItem): number {
-  if (!item.usageBased) return item.monthlyCost
+  if (!item.usageBased) {
+    if (item.monthlyCost === null) {
+      throw new Error(`Run-cost item '${item.id}' is not usage-based and has no monthly cost; RunCostLineItemSchema requires one`)
+    }
+    return item.monthlyCost
+  }
   const formula = item.usageFormula
   if (formula === undefined) return 0
   const inputCost = ((formula.callsPerMonth * formula.avgInputTokens) / 1_000_000) * formula.inputPricePerMTok

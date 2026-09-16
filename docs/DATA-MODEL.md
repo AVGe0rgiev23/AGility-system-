@@ -786,6 +786,11 @@ Version 4 (`v3-to-v4.ts`) only advances the version. It adds the rule that a
 `currency` appears only on a money unit; a v3 value that breaks it keeps its
 currency and fails with its issue path, because dropping the currency could
 silently turn a real cost into a bare number.
+Version 5 (`v4-to-v5.ts`) only advances the version. It makes a run-cost item's
+`monthlyCost` nullable and required only when `usageBased` is false (ENGINES §3),
+in `Config.runCostDefaults` and `scope.runCostItems` alike. Every v4 item carries
+a number, which stays valid. A usage-based v4 item keeps the number v4 made it
+carry, since removing it would be a repair.
 `runMigrations` never writes. Storage writes the result back atomically and
 stamps `Meta.lastMigratedAt` only once it returns. An optional third argument,
 `{ migrations, current }`, exists so tests can exercise the step loop with a

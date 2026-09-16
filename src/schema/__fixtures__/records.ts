@@ -131,7 +131,7 @@ export function usageRunCostLineItem(): RunCostLineItem {
     id: 'rc-ai',
     label: 'Email classification model',
     category: 'ai',
-    monthlyCost: 0,
+    monthlyCost: null,
     paidBy: { 'fully-managed': 'agency', 'client-owned': 'client', hybrid: 'client' },
     usageBased: true,
     usageFormula: {
@@ -544,7 +544,7 @@ export function library(): Library {
 
 export function meta(): Meta {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     createdAt: '2026-09-01T08:00:00.000Z',
     lastMigratedAt: null,
     appVersion: '0.0.0',

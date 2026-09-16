@@ -45,9 +45,16 @@ describe('itemMonthlyCost', () => {
     expect(itemMonthlyCost(runCostLineItem())).toBe(5)
   })
 
-  it('prices a usage-based item from its formula alone', () => {
+  it('prices a usage-based item from its formula alone, with or without a monthly cost', () => {
+    expect(usageRunCostLineItem().monthlyCost).toBeNull()
     expect(itemMonthlyCost(usageRunCostLineItem())).toBeCloseTo(5.265, 10)
     expect(itemMonthlyCost({ ...usageRunCostLineItem(), monthlyCost: 999 })).toBeCloseTo(5.265, 10)
+  })
+
+  it('throws for a fixed item with no monthly cost rather than pricing it at 0', () => {
+    const unpriced = { ...runCostLineItem(), monthlyCost: null }
+    expect(() => itemMonthlyCost(unpriced)).toThrow("Run-cost item 'rc-hosting' is not usage-based and has no monthly cost")
+    expect(() => computeRunCost(baseInput({ items: [usageRunCostLineItem(), unpriced] }))).toThrow('has no monthly cost')
   })
 
   it('prices a usage-based item without a formula at 0', () => {

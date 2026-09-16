@@ -35,4 +35,16 @@ describe('Field', () => {
   it('renders no alert when there are no issues', () => {
     expect(renderToStaticMarkup(<Field label="Name" htmlFor="n" hint="h">x</Field>)).not.toContain('role="alert"')
   })
+
+  it('in a table cell, keeps the label for screen readers only and the description under the control', () => {
+    const html = renderToStaticMarkup(
+      <Field label="Pilot floor" htmlFor="f" issues={['Too high']} required layout="cell">
+        <input id="f" />
+      </Field>,
+    )
+    expect(html).toContain('<label for="f" class="sr-only">Pilot floor<span aria-hidden="true"> *</span></label>')
+    expect(html).not.toContain('grid-cols')
+    expect(html.indexOf('<input id="f"/>')).toBeLessThan(html.indexOf('id="f-description"'))
+    expect(html).toContain('<li>Too high</li>')
+  })
 })
