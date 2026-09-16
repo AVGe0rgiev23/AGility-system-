@@ -329,9 +329,13 @@ describe('issue placement', () => {
     for (const path of ['agencyCurrency', 'fxRates.rates.GBP', 'pricing.bands.2.maxHours', 'runCostDefaults.0.usageFormula.callsPerMonth', 'runCostDefaults.0.paidBy.hybrid', 'storage.lastSyncAt']) {
       expect(located.has(path), path).toBe(true)
     }
-    for (const path of ['industries', 'pricing.bands', 'runCostDefaults', 'runCostDefaults.0.usageFormula', 'runCostDefaults.1.usageFormula']) {
+    for (const path of ['industries', 'pricing.bands', 'runCostDefaults', 'runCostDefaults.0.usageFormula']) {
       expect(located.has(path), path).toBe(true)
     }
+    // An item that is not usage-based and has no formula has no formula to show an issue at.
+    expect(located.has('runCostDefaults.1.usageFormula')).toBe(false)
+    const { usageFormula: _dropped, ...formulaMissing } = usageRunCostLineItem()
+    expect(locatedPaths(withRunCost(formulaMissing)).has('runCostDefaults.0.usageFormula')).toBe(true)
     expect(located.has('pricing')).toBe(false)
     expect(leafPaths({ a: [1, { b: null }], c: 'x' })).toEqual(['a.0', 'a.1.b', 'c'])
   })

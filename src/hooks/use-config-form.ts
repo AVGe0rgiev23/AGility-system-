@@ -286,10 +286,13 @@ export function leafPaths(value: unknown, prefix = ''): string[] {
   return entries.flatMap(([key, item]) => leafPaths(item, prefix === '' ? key : `${prefix}.${key}`))
 }
 
-// Every path the Settings screen shows issues at: each leaf, each list, and each run-cost item's
-// formula as a whole. The every-field render test holds the screen to this list.
+// Every path the Settings screen shows issues at: each leaf, each list, and the formula as a whole of
+// each run-cost item that is usage-based or has one. The every-field render test holds the screen to
+// exactly this set.
 export function locatedPaths(draft: Config): Set<string> {
-  const formulas = draft.runCostDefaults.map((_, index) => `runCostDefaults.${index}.usageFormula`)
+  const formulas = draft.runCostDefaults.flatMap((item, index) =>
+    item.usageBased || item.usageFormula !== undefined ? [`runCostDefaults.${index}.usageFormula`] : [],
+  )
   return new Set([...leafPaths(draft), ...LIST_PATHS, ...formulas])
 }
 
@@ -321,25 +324,33 @@ export function canSave(state: ConfigFormState): boolean {
 
 // ---- Hook -----------------------------------------------------------------------------------------
 
-export function useConfigForm(saved: Config | null) {
-  const [stored, setStored] = useState(() => initialConfigForm(saved))
-  // A save, import or restore reloads the store and brings a new Config; the form starts again from it.
-  const state = stored.saved === saved ? stored : initialConfigForm(saved)
-  if (state !== stored) setStored(state)
+type Update = (edit: (current: ConfigFormState) => ConfigFormState) => void
 
-  const update = (edit: (current: ConfigFormState) => ConfigFormState) => setStored((current) => edit(current))
+// What the Settings screen reads and calls, built from any state, so a render test can show a state
+// that only typing could otherwise reach.
+export function configFormView(state: ConfigFormState, update: Update) {
+  const { draft } = state
   const issues = formIssues(state)
+  const byPath = issuesByPath(issues)
+  const at = (path: string) => (draft === null ? undefined : valueAt(draft, path))
 
   return {
     state,
+    draft,
     issues,
-    byPath: issuesByPath(issues),
-    otherProblems: otherProblems(state.draft, issues),
+    otherProblems: otherProblems(draft, issues),
     changed: hasUnsavedEdits(state),
     canSave: canSave(state),
+    issuesAt: (path: string): readonly string[] => byPath.get(path) ?? [],
     numberText: (path: string) => numberText(state, path),
     numberReading: (path: string) => numberReading(state, path),
     numberWarnings: (path: string) => numberWarnings(state, path),
+    textAt: (path: string): string => {
+      const value = at(path)
+      return typeof value === 'string' ? value : ''
+    },
+    flagAt: (path: string): boolean => at(path) === true,
+    valueAt: at,
     setNumberText: (path: string, text: string) => update((current) => setNumberText(current, path, text)),
     setText: (path: string, text: string) => update((current) => setText(current, path, text)),
     setChoice: (path: string, value: string) => update((current) => setChoice(current, path, value)),
@@ -350,7 +361,11 @@ export function useConfigForm(saved: Config | null) {
     addIndustry: () => update(addIndustry),
     removeIndustry: (index: number) => update((current) => removeIndustry(current, index)),
     moveIndustry: (index: number, offset: -1 | 1) => update((current) => moveIndustry(current, index, offset)),
-    addRunCostItem: (id: string) => update((current) => addRunCostItem(current, id)),
+    addRunCostItem: () => {
+      // Made outside the state update, which React may run twice.
+      const id = `rc-${crypto.randomUUID().slice(0, 8)}`
+      update((current) => addRunCostItem(current, id))
+    },
     removeRunCostItem: (index: number) => update((current) => removeRunCostItem(current, index)),
     moveRunCostItem: (index: number, offset: -1 | 1) => update((current) => moveRunCostItem(current, index, offset)),
     setUsageBased: (index: number, on: boolean) => update((current) => setUsageBased(current, index, on)),
@@ -359,4 +374,12 @@ export function useConfigForm(saved: Config | null) {
   }
 }
 
-export type ConfigForm = ReturnType<typeof useConfigForm>
+export type ConfigFormView = ReturnType<typeof configFormView>
+
+export function useConfigForm(saved: Config | null): ConfigFormView {
+  const [stored, setStored] = useState(() => initialConfigForm(saved))
+  // A save, import or restore reloads the store and brings a new Config; the form starts again from it.
+  const state = stored.saved === saved ? stored : initialConfigForm(saved)
+  if (state !== stored) setStored(state)
+  return configFormView(state, setStored)
+}
