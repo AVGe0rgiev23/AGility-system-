@@ -132,6 +132,16 @@ describe('CompanySchema', () => {
     }
   })
 
+  it('refuses a blank or repeated stated tool or compliance requirement, at the entry', () => {
+    const base = company()
+    expect(issuePaths(CompanySchema, { ...base, statedTools: ['HubSpot', ' ', 'HubSpot'] })).toEqual(['statedTools.1', 'statedTools.2'])
+    expect(issuePaths(CompanySchema, { ...base, constraints: { compliance: ['GDPR', '', 'GDPR'] } })).toEqual(['constraints.compliance.1', 'constraints.compliance.2'])
+    expect(CompanySchema.safeParse({ ...base, constraints: { compliance: ['GDPR', 'GDPR'] } }).error?.issues[0]?.message).toBe(
+      "The compliance requirement 'GDPR' is already listed",
+    )
+    expect(issuePaths(CompanySchema, { ...base, statedTools: ['HubSpot', 'hubspot'] })).toEqual([])
+  })
+
   it('infers the spec types', () => {
     expectTypeOf<Company['currency']>().toEqualTypeOf<Currency>()
     expectTypeOf<Company['blendedHourlyCost']>().toEqualTypeOf<TracedValue | null>()

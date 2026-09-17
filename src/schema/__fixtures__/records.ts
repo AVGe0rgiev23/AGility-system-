@@ -544,7 +544,7 @@ export function library(): Library {
 
 export function meta(): Meta {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     createdAt: '2026-09-01T08:00:00.000Z',
     lastMigratedAt: null,
     appVersion: '0.0.0',

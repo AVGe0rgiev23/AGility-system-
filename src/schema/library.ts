@@ -67,10 +67,19 @@ export const DocumentTemplateSchema = z.object({
 export type DocumentTemplate = z.infer<typeof DocumentTemplateSchema>
 
 // Global and cross-client, unlike engagements.
-export const LibrarySchema = z.object({
-  patterns: z.array(PatternSchema),
-  questionSets: z.array(QuestionSetSchema),
-  templates: z.array(DocumentTemplateSchema),
-  calibration: z.array(CalibrationRecordSchema),
-})
+export const LibrarySchema = z
+  .object({
+    patterns: z.array(PatternSchema),
+    questionSets: z.array(QuestionSetSchema),
+    templates: z.array(DocumentTemplateSchema),
+    calibration: z.array(CalibrationRecordSchema),
+  })
+  .superRefine((library, ctx) => {
+    // A discovery session names its question set by id, so two sets sharing one would be ambiguous.
+    const seen = new Set<string>()
+    for (const [index, set] of library.questionSets.entries()) {
+      if (seen.has(set.id)) ctx.addIssue({ code: 'custom', path: ['questionSets', index, 'id'], message: `Question set id '${set.id}' is already used` })
+      seen.add(set.id)
+    }
+  })
 export type Library = z.infer<typeof LibrarySchema>

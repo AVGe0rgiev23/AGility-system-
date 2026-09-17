@@ -196,6 +196,8 @@ any other malformed one. Within an engagement each path is prefixed, as in
 | The company name is not blank | `name` |
 | `website`, when present, is an `http://` or `https://` URL with a domain host and no leading or trailing whitespace | `website` |
 | `employeeCount`, when present, is a whole number, at least 0 | `employeeCount` |
+| Each stated tool is not blank, and none appears twice | `statedTools.<i>`, on the later one for a repeat |
+| Each compliance requirement is not blank, and none appears twice | `constraints.compliance.<i>`, on the later one for a repeat |
 | A contact's name is not blank | `name` |
 | A contact's `email`, when present, is a valid email address | `email` |
 | Each tag is not blank | `tags.<i>` |
@@ -215,6 +217,10 @@ Why:
 - **Real due dates.** The engagement list filters next actions due by today by
   comparing `YYYY-MM-DD` strings, which only works for real dates in that form.
 - **Distinct, non-blank tags.** The list filters by tag.
+- **Distinct, non-blank stated tools and compliance requirements.** Stated tools
+  feed signal extraction, and each compliance requirement adds 3 effort points
+  (ENGINES §1.2) to every opportunity it reaches, so a blank or repeated entry
+  would count for nothing.
 
 ## Discovery
 
@@ -266,9 +272,12 @@ interface Question {
   required: boolean
   showIf?: Condition            // shown only when this evaluates true
   mapsTo?: MappablePath         // where the answer lands, validated
+  unit?: string                 // what an unmapped number answer is recorded in
   suggestsPatterns?: string[]
 }
 
+// answerId holds the id of the question whose answer is tested: no answer exists
+// while a question set is written.
 type Condition =
   | { answerId: string; equals: string | number | boolean }
   | { answerId: string; gt: number }
@@ -305,6 +314,76 @@ export type MappablePath = typeof MAPPABLE_PATHS[number]
 
 Saving a question set validates every `mapsTo` against this list and refuses
 the save on a mismatch.
+
+**Each path takes only the answers it can hold.** `MAPPING_TARGETS`, beside the
+list, says which answer kinds fill a path, how the answer lands and, for a figure,
+what it is recorded in:
+
+| Path | Answer kinds | Lands as |
+|---|---|---|
+| `company.blendedHourlyCost` | number | the TracedValue, money per hour |
+| `company.employeeCount` | number | the plain number |
+| `company.industry` | choice, text | replaces |
+| `company.sourceOfTruth` | text | replaces |
+| `company.statedTools` | multi | adds the items not already listed |
+| `company.constraints.compliance` | multi | adds the items not already listed |
+| `company.preferredDeliveryModel` | choice, whose choices are delivery models | replaces |
+| `process.frequency.occurrencesPerMonth` | number | the TracedValue, `count/month` |
+| `process.frequency.minutesPerOccurrence` | duration | the TracedValue, `minutes` |
+| `process.frequency.peopleInvolved` | number | the TracedValue, `count` |
+| `process.errorProfile.errorRatePercent` | number | the TracedValue, `percent` |
+| `process.errorProfile.costPerError` | number | the TracedValue, money |
+| `process.revenueImpact` | choice, whose choices are `direct`, `indirect`, `none` | replaces |
+| `process.roleHourlyCost` | number | the TracedValue, money per hour |
+
+A money figure is recorded in the company's currency unless another is chosen.
+
+### Discovery validation
+
+`QuestionSetSchema`, `AnswerSchema`, `DiscoverySessionSchema` and
+`LibrarySchema` enforce these rules on top of the types above.
+
+| Rule | Issue path |
+|---|---|
+| A question set's name is not blank | `name` |
+| `appliesTo.minEmployees`, when present, is a whole number, at least 0 | `appliesTo.minEmployees` |
+| Question set ids are unique in the Library | `questionSets.<i>.id`, on the later set |
+| Question ids are unique in their set | `questions.<i>.id`, on the later question |
+| A question's text is not blank | `questions.<i>.text` |
+| A choice or multi question has at least one choice | `questions.<i>.choices` |
+| Each choice is not blank, and none appears twice | `questions.<i>.choices.<k>` |
+| No other kind has choices | `questions.<i>.choices` |
+| `mapsTo` takes the question's kind, per `MAPPING_TARGETS` | `questions.<i>.mapsTo` |
+| A question mapped to an enum path offers only that enum's values | `questions.<i>.choices.<k>` |
+| An unmapped number question has a unit, and it is not a money unit | `questions.<i>.unit` |
+| No mapped question, duration or non-number question has a unit of its own | `questions.<i>.unit` |
+| A condition naming a question in the set names an earlier question | `...showIf...answerId` |
+| `gt` tests a number or duration question | `...showIf...gt` |
+| `includes` tests a multi or text question | `...showIf...includes` |
+| `equals` tests a question of any other kind, with a value of its type, and one of its choices for a choice question | `...showIf...equals` |
+| An answer's value suits its kind: text for text and choice, a number for number and duration, yes or no for boolean, a list for multi | `value` |
+| A multi answer's items are not blank, and none appears twice | `value.<k>` |
+| A number or duration answer is traced, and its traced value equals its value | `traced`, `traced.value` |
+| No other answer is traced | `traced` |
+| A session has at most one answer per question | `answers.<j>.questionId`, on the later answer |
+
+Why:
+
+- **Kinds and paths.** An answer of the wrong kind would land on its path as the
+  wrong type, and an enum path cannot hold a value outside its enum.
+- **One source for a unit.** TracedInput takes the unit from the field, never from
+  the person typing, so a figure is recorded in exactly one unit. A mapped question
+  takes its path's, a duration is always in minutes, and an unmapped number needs
+  its own. A money figure must map to a money path, where its currency is recorded.
+- **Earlier questions only.** Questions are shown in order, so a condition can
+  only depend on what has already been asked. A condition naming a question that
+  is not in the set is not refused, because every frozen fixture before version 7
+  holds one. It fails safe: it reads false and the question stays hidden. The
+  question-set editor refuses one before saving, so none is created in the app.
+- **One fact per answer.** The spec keeps both `value` and `traced`; requiring
+  them to agree keeps them one fact rather than two sources.
+- **Unique ids.** Sessions name their question set, and conditions and answers
+  name questions, by id.
 
 ## Process
 
@@ -829,6 +908,11 @@ Version 6 (`v5-to-v6.ts`) only advances the version. It adds the engagement
 capture rules (Company, Validation); a v5 record that breaks one stays as stored
 and fails with its issue path, because guessing a name or dropping a malformed
 address would change what was entered.
+Version 7 (`v6-to-v7.ts`) only advances the version. It adds `Question.unit`,
+which no v6 question has, the discovery rules (Discovery validation), and the
+rule that stated tools and compliance requirements are neither blank nor
+repeated. A v6 record that breaks one stays as stored and fails with its issue
+path.
 `runMigrations` never writes. Storage writes the result back atomically and
 stamps `Meta.lastMigratedAt` only once it returns. An optional third argument,
 `{ migrations, current }`, exists so tests can exercise the step loop with a

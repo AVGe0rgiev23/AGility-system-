@@ -80,5 +80,17 @@ export const CompanySchema = z.object({
   if (employeeCount !== undefined && (!Number.isInteger(employeeCount) || employeeCount < 0)) {
     ctx.addIssue({ code: 'custom', path: ['employeeCount'], message: 'The employee count must be a whole number, at least 0' })
   }
+  // Stated tools feed signal extraction, and each compliance requirement adds effort points to every
+  // opportunity it reaches, so a blank or repeated entry would count for nothing.
+  const listEntries = (list: readonly string[], path: string[], noun: string) => {
+    const seen = new Set<string>()
+    for (const [index, entry] of list.entries()) {
+      if (entry.trim() === '') ctx.addIssue({ code: 'custom', path: [...path, index], message: `A ${noun} cannot be blank` })
+      else if (seen.has(entry)) ctx.addIssue({ code: 'custom', path: [...path, index], message: `The ${noun} '${entry}' is already listed` })
+      seen.add(entry)
+    }
+  }
+  listEntries(company.statedTools, ['statedTools'], 'stated tool')
+  listEntries(company.constraints.compliance, ['constraints', 'compliance'], 'compliance requirement')
 })
 export type Company = z.infer<typeof CompanySchema>

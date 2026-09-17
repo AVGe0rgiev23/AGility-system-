@@ -158,6 +158,11 @@ describe('LibrarySchema', () => {
     expect(LibrarySchema.parse(roundTrip(library()))).toEqual(library())
   })
 
+  it('refuses two question sets with the same id, at the later one', () => {
+    const questionSets = [questionSet(), { ...questionSet(), name: 'Copy' }]
+    expect(issuePaths(LibrarySchema, { ...library(), questionSets })).toEqual(['questionSets.1.id'])
+  })
+
   it('infers the spec types', () => {
     expectTypeOf<Library>().toEqualTypeOf<{
       patterns: Pattern[]
