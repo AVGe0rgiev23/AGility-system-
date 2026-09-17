@@ -20,6 +20,7 @@ function render(state: EngagementFormState, tab: string | null = null, patch: { 
       saveError={patch.saveError ?? null}
       onSave={ignore}
       deletion={patch.deletion ?? NO_DELETION}
+      questionSets={[]}
       industries={['Professional Services', 'logistics']}
     />,
   )

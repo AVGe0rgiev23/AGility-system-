@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useEngagementForm, type EngagementFormView, type EngagementTab } from '../../../hooks/use-engagement-form'
 import type { BootedStore, StoreHandle } from '../../../hooks/use-store'
+import type { QuestionSet } from '../../../schema/discovery'
 import type { Engagement } from '../../../schema/engagement'
 import { hrefFor, navigate } from '../../shell/router'
 import { OtherProblems, SaveBar } from '../form-controls'
 import { CompanyTab } from './company-tab'
 import { ContactsTab } from './contacts-tab'
+import { DiscoveryTab } from './discovery-tab'
 import { OverviewTab, type Deletion } from './overview-tab'
 
 type LoadedStore = Extract<BootedStore, { phase: 'loaded' }>
@@ -22,7 +24,7 @@ export const ENGAGEMENT_TABS: readonly TabDefinition[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'company', label: 'Company' },
   { id: 'contacts', label: 'Contacts' },
-  { id: 'discovery', label: 'Discovery', placeholder: 'Question sets and discovery sessions are built in Stage 1, tasks 5 to 7.' },
+  { id: 'discovery', label: 'Discovery' },
   { id: 'processes', label: 'Processes', placeholder: 'Process mapping is built in Stage 1, task 8.' },
   { id: 'opportunities', label: 'Opportunities', placeholder: 'Opportunity capture is built in Stage 1, task 9, and scoring in Stage 2, task 10.' },
   { id: 'blueprints', label: 'Blueprints', placeholder: 'The blueprint editor and its diagram are built in Stage 4, tasks 1 and 2.' },
@@ -33,7 +35,7 @@ export const ENGAGEMENT_TABS: readonly TabDefinition[] = [
 ]
 
 function isFormTab(id: string): id is EngagementTab {
-  return id === 'overview' || id === 'company' || id === 'contacts'
+  return id === 'overview' || id === 'company' || id === 'contacts' || id === 'discovery'
 }
 
 export interface EngagementScreenProps {
@@ -46,6 +48,8 @@ export interface EngagementScreenProps {
   deletion: Deletion
   // Null when the stored Config is unusable.
   industries: readonly string[] | null
+  // Null when the stored Library is unusable.
+  questionSets: readonly QuestionSet[] | null
 }
 
 function TabNav({ form, active }: { form: EngagementFormView; active: string | undefined }) {
@@ -79,7 +83,7 @@ function TabNav({ form, active }: { form: EngagementFormView; active: string | u
 }
 
 // The screen, given everything it shows. EngagementDetail holds the state; this only renders it.
-export function EngagementScreen({ form, tab, saving, saveError, onSave, deletion, industries }: EngagementScreenProps) {
+export function EngagementScreen({ form, tab, saving, saveError, onSave, deletion, industries, questionSets }: EngagementScreenProps) {
   const { saved } = form
   const active = ENGAGEMENT_TABS.find((candidate) => candidate.id === (tab ?? 'overview'))
 
@@ -124,6 +128,8 @@ export function EngagementScreen({ form, tab, saving, saveError, onSave, deletio
           <CompanyTab form={form} industries={industries} />
         ) : active.id === 'contacts' ? (
           <ContactsTab form={form} />
+        ) : active.id === 'discovery' ? (
+          <DiscoveryTab form={form} questionSets={questionSets} />
         ) : null}
       </div>
     </section>
@@ -139,9 +145,10 @@ interface EngagementDetailProps {
   tab: string | null
   handle: Pick<StoreHandle, 'saveEngagement' | 'deleteEngagement'>
   industries: readonly string[] | null
+  questionSets: readonly QuestionSet[] | null
 }
 
-function EngagementDetail({ engagement, tab, handle, industries }: EngagementDetailProps) {
+function EngagementDetail({ engagement, tab, handle, industries, questionSets }: EngagementDetailProps) {
   const form = useEngagementForm(engagement)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -177,6 +184,7 @@ function EngagementDetail({ engagement, tab, handle, industries }: EngagementDet
       form={form}
       tab={tab}
       industries={industries}
+      questionSets={questionSets}
       saving={saving}
       saveError={saveError}
       onSave={() => void save()}
@@ -237,5 +245,14 @@ export function EngagementView({ loaded, id, tab, handle }: EngagementViewProps)
     return <EngagementNotFound id={id} storedButInvalid={storedButInvalid} />
   }
   // Keyed by id, so moving to another engagement starts its own form and confirmation state.
-  return <EngagementDetail key={id} engagement={engagement} tab={tab} handle={handle} industries={loaded.load.store.config?.industries ?? null} />
+  return (
+    <EngagementDetail
+      key={id}
+      engagement={engagement}
+      tab={tab}
+      handle={handle}
+      industries={loaded.load.store.config?.industries ?? null}
+      questionSets={loaded.load.store.library?.questionSets ?? null}
+    />
+  )
 }
