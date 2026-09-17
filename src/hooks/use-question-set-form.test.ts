@@ -195,9 +195,15 @@ describe('located paths and saving', () => {
   it('locates every field of every question, set or not, each choice and every condition leaf', () => {
     const draft = set(q('a', { kind: 'choice', choices: ['x', 'y'] }), q('b', { showIf: { all: [{ answerId: 'a', equals: 'x' }] } }))
     const located = locatedPaths(draft)
-    for (const path of ['name', 'kind', 'appliesTo.industries', 'appliesTo.minEmployees', 'questions', 'questions.0.choices.1', 'questions.1.unit', 'questions.1.showIf', 'questions.1.showIf.all.0.equals', 'questions.1.showIf.all.0.answerId']) {
+    for (const path of ['name', 'kind', 'appliesTo.industries', 'appliesTo.minEmployees', 'questions', 'questions.0.choices.1', 'questions.1.helpText', 'questions.1.showIf', 'questions.1.showIf.all.0.equals', 'questions.1.showIf.all.0.answerId']) {
       expect(located.has(path), path).toBe(true)
     }
+    // A unit shows on a number question, choices on a choice question, and either on a question that already has one.
+    expect(located.has('questions.1.unit')).toBe(false)
+    expect(located.has('questions.1.choices')).toBe(false)
+    expect(locatedPaths(set(q('a', { unit: 'words' }))).has('questions.0.unit')).toBe(true)
+    expect(locatedPaths(set(q('a', { kind: 'number' }))).has('questions.0.unit')).toBe(true)
+    expect(locatedPaths(set(q('a', { choices: ['x'] }))).has('questions.0.choices.0')).toBe(true)
     expect(otherProblems(draft, [{ path: 'appliesTo.industries.0', message: 'x' }])).toHaveLength(1)
   })
 

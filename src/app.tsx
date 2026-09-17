@@ -7,6 +7,8 @@ import { DEFAULT_LIST_PREFS, EngagementListView, type EngagementListPrefs } from
 import { EngagementView } from './ui/views/engagements/engagement-view'
 import { PlaceholderView } from './ui/views/placeholder-view'
 import { PrimitivesView } from './ui/views/primitives-view'
+import { QuestionSetEditorView } from './ui/views/question-sets/question-set-editor-view'
+import { QuestionSetListView } from './ui/views/question-sets/question-set-list-view'
 import { SettingsView } from './ui/views/settings/settings-view'
 
 interface PageProps {
@@ -33,8 +35,9 @@ function Page({ route, loaded, handle, appVersion, listPrefs, onListPrefs }: Pag
     case 'engagement':
       return <EngagementView loaded={loaded} id={route.id} tab={route.tab} handle={handle} />
     case 'question-sets':
+      return <QuestionSetListView loaded={loaded} saveLibrary={handle.saveLibrary} />
     case 'question-set':
-      return <PlaceholderView title="Question sets" detail="The question-set list and editor are built in Stage 1, task 5." />
+      return <QuestionSetEditorView loaded={loaded} id={route.id} saveLibrary={handle.saveLibrary} />
     case 'settings':
       return <SettingsView loaded={loaded} handle={handle} appVersion={appVersion} />
     case 'primitives':

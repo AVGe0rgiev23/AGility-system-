@@ -217,11 +217,21 @@ export function formIssues(state: QuestionSetFormState): FormIssue[] {
   return withTextIssuesFirst(typed, schema)
 }
 
-const QUESTION_FIELDS = ['id', 'text', 'kind', 'required', 'helpText', 'unit', 'mapsTo', 'choices', 'suggestsPatterns', 'showIf'] as const
+const QUESTION_FIELDS = ['id', 'text', 'kind', 'required', 'helpText', 'mapsTo', 'suggestsPatterns', 'showIf'] as const
+
+// A unit belongs to a number question and choices to a choice or multi question, so the editor shows
+// them there, and on any question that already has one, where their issue says why it should not.
+export function showsUnit(question: Question): boolean {
+  return question.kind === 'number' || question.unit !== undefined
+}
+
+export function showsChoices(question: Question): boolean {
+  return CHOICE_KINDS.includes(question.kind) || question.choices !== undefined
+}
 
 // Every path the editor shows issues at: the set's fields, each question's fields whether set or not,
-// each choice, and every leaf of each condition. Industries and patterns are picked from lists, so their
-// issues show at the list.
+// its unit and choices where shown, each choice, and every leaf of each condition. Industries and
+// patterns are picked from lists, so their issues show at the list.
 export function locatedPaths(draft: QuestionSet): Set<string> {
   const conditionLeaves = draft.questions.flatMap((question, index) => (question.showIf === undefined ? [] : leafPaths(question.showIf, `questions.${index}.showIf`)))
   return new Set([
@@ -232,7 +242,8 @@ export function locatedPaths(draft: QuestionSet): Set<string> {
     'questions',
     ...draft.questions.flatMap((question, index) => [
       ...QUESTION_FIELDS.map((field) => `questions.${index}.${field}`),
-      ...(question.choices ?? []).map((_, choiceIndex) => `questions.${index}.choices.${choiceIndex}`),
+      ...(showsUnit(question) ? [`questions.${index}.unit`] : []),
+      ...(showsChoices(question) ? [`questions.${index}.choices`, ...(question.choices ?? []).map((_, choiceIndex) => `questions.${index}.choices.${choiceIndex}`)] : []),
     ]),
     ...conditionLeaves,
   ])
