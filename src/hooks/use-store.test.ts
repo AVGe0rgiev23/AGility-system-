@@ -6,7 +6,8 @@ import { MemoryFolder } from '../storage/__fixtures__/memory-folder'
 import { plant } from '../storage/__fixtures__/raw-idb'
 import { FOLDER_HANDLE_KEY, type LoadResult } from '../storage/repository'
 import { engagementFolderName, type SyncStatus } from '../storage/sync'
-import { afterReload, bootStore, createStoreRuntime, deleteAndReload, prepareRestore, saveAndReload, saveSettings, type StoreRuntime } from './use-store'
+import { newQuestionSet } from './question-set-library'
+import { afterReload, bootStore, createStoreRuntime, deleteAndReload, prepareRestore, saveAndReload, saveLibraryAndReload, saveSettings, type StoreRuntime } from './use-store'
 
 const T1 = '2026-09-15T09:00:00.000Z'
 
@@ -237,5 +238,20 @@ describe('saveAndReload and deleteAndReload', () => {
     expect(load.store.engagements.map((item) => item.id)).toEqual(['eng-kept'])
     expect(folder.read(`engagements/${name}/engagement.json`)).toBeDefined()
     expect(runtime.sync.status()).toMatchObject({ kind: 'connected', staleFolders: [name] })
+  })
+})
+
+describe('saveLibraryAndReload', () => {
+  it('saves the Library and reloads the store with it, and refuses an invalid one without writing', async () => {
+    runtime = createStoreRuntime({ databaseName: 'library-save', clock: () => T1, appVersion: '0.1.0', pickFolder: undefined })
+    await runtime.boot()
+    const before = await runtime.repository.readRawStore()
+    const library = { patterns: [], questionSets: [newQuestionSet('qs-new', 'Follow-up call', 'follow-up')], templates: [], calibration: [] }
+    const load = await saveLibraryAndReload(runtime.repository, library)
+    expect(load).toMatchObject({ status: 'loaded', store: { library } })
+
+    await expect(saveLibraryAndReload(runtime.repository, { ...library, questionSets: [newQuestionSet('qs-new', ' ', 'teardown')] })).rejects.toThrow()
+    expect((await runtime.repository.readRawStore()).library).toEqual(library)
+    expect(before.library).not.toEqual(library)
   })
 })

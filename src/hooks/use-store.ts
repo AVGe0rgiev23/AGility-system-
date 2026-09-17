@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConfigSchema, type Config } from '../schema/config'
 import type { Engagement } from '../schema/engagement'
+import type { Library } from '../schema/library'
 import { createRepository, FOLDER_HANDLE_KEY, type LoadResult, type Repository } from '../storage/repository'
 import { createFolderSync, warningFor, type FolderHandle, type FolderSync, type SyncStatus } from '../storage/sync'
 import { applyImport, exportStore, prepareFolderRestore, prepareImportText, type ImportPreparation, type PreparedImport } from '../storage/transfer'
@@ -111,6 +112,13 @@ export async function saveAndReload(repository: Pick<Repository, 'saveEngagement
   return repository.load()
 }
 
+// Saves the Library, as question sets are edited, added or removed, then reloads, which recomputes
+// every cache that reads it.
+export async function saveLibraryAndReload(repository: Pick<Repository, 'saveLibrary' | 'load'>, library: Library): Promise<LoadResult> {
+  await repository.saveLibrary(library)
+  return repository.load()
+}
+
 // The engagement's folder, if one is connected, stays on disk and is reported as stale.
 export async function deleteAndReload(repository: Pick<Repository, 'deleteEngagement' | 'load'>, id: string): Promise<LoadResult> {
   await repository.deleteEngagement(id)
@@ -135,6 +143,7 @@ export interface StoreHandle {
   createEngagement: (draft: NewEngagementDraft) => Promise<CreateResult>
   saveEngagement: (engagement: Engagement) => Promise<ActionResult>
   deleteEngagement: (id: string) => Promise<ActionResult>
+  saveLibrary: (library: Library) => Promise<ActionResult>
   exportStore: () => Promise<{ filename: string; text: string }>
   // Nothing is written by either; only applyImport writes, after the diff is confirmed.
   prepareImport: (text: string) => Promise<ImportPreparation>
@@ -202,6 +211,7 @@ export function useStore(runtime: StoreRuntime): StoreHandle {
   const applyPrepared = useCallback((prepared: PreparedImport) => reload(() => applyImport(prepared, runtime.repository)), [reload, runtime])
   const saveEngagement = useCallback((engagement: Engagement) => reload(() => saveAndReload(runtime.repository, engagement)), [reload, runtime])
   const deleteEngagement = useCallback((id: string) => reload(() => deleteAndReload(runtime.repository, id)), [reload, runtime])
+  const saveLibrary = useCallback((library: Library) => reload(() => saveLibraryAndReload(runtime.repository, library)), [reload, runtime])
   const createEngagement = useCallback(
     async (draft: NewEngagementDraft): Promise<CreateResult> => {
       const built = buildNewEngagement(draft, crypto.randomUUID(), runtime.clock())
@@ -227,6 +237,7 @@ export function useStore(runtime: StoreRuntime): StoreHandle {
     createEngagement,
     saveEngagement,
     deleteEngagement,
+    saveLibrary,
     canPickFolder: runtime.pickFolder !== undefined,
   }
 }
