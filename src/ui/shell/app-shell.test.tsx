@@ -18,6 +18,13 @@ describe('AppShell', () => {
     expect(html).toContain('href="#/engagements"')
     expect(html).toContain('href="#/settings"')
     expect(html).toContain('href="#/primitives"')
+    expect(html).toContain('href="#/question-sets"')
+  })
+
+  it('counts a question set as the question-set list', () => {
+    const editor = shell({ name: 'question-set', id: 'qs-teardown' })
+    expect(editor.match(/aria-current="page"/g)).toHaveLength(1)
+    expect(editor).toMatch(/href="#\/question-sets" aria-current="page"/)
   })
 
   it('marks exactly the current screen, counting engagement detail as the engagement list', () => {

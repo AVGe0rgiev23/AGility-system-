@@ -10,6 +10,7 @@ interface NavItem {
 
 const MAIN_NAV: readonly NavItem[] = [
   { label: 'Engagements', target: { name: 'engagements' } },
+  { label: 'Question sets', target: { name: 'question-sets' } },
   { label: 'Settings', target: { name: 'settings' } },
 ]
 
@@ -17,6 +18,7 @@ const REFERENCE_NAV: readonly NavItem[] = [{ label: 'Primitives', target: { name
 
 function isActive(route: Route, target: RouteTarget): boolean {
   if (target.name === 'engagements') return route.name === 'engagements' || route.name === 'engagement'
+  if (target.name === 'question-sets') return route.name === 'question-sets' || route.name === 'question-set'
   return route.name === target.name
 }
 

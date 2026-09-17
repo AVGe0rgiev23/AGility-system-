@@ -32,6 +32,9 @@ function Page({ route, loaded, handle, appVersion, listPrefs, onListPrefs }: Pag
       )
     case 'engagement':
       return <EngagementView loaded={loaded} id={route.id} tab={route.tab} handle={handle} />
+    case 'question-sets':
+    case 'question-set':
+      return <PlaceholderView title="Question sets" detail="The question-set list and editor are built in Stage 1, task 5." />
     case 'settings':
       return <SettingsView loaded={loaded} handle={handle} appVersion={appVersion} />
     case 'primitives':

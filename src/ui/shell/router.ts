@@ -5,7 +5,10 @@ import { useMemo, useSyncExternalStore } from 'react'
 
 export type Route =
   | { name: 'engagements' }
-  | { name: 'engagement'; id: string; tab: string | null }
+  // item names one record inside the tab, such as a discovery session.
+  | { name: 'engagement'; id: string; tab: string | null; item?: string }
+  | { name: 'question-sets' }
+  | { name: 'question-set'; id: string }
   | { name: 'settings' }
   | { name: 'primitives' }
   | { name: 'not-found'; path: string }
@@ -22,10 +25,14 @@ export function parseRoute(hash: string): Route {
     // A malformed percent-escape, typed or pasted by hand, is an address like any other unknown one.
     return notFound
   }
-  const [head, id, tab, ...rest] = segments
+  const [head, id, tab, item, ...rest] = segments
   if (head === undefined) return { name: 'engagements' }
   if (head === 'engagements' && rest.length === 0) {
-    return id === undefined ? { name: 'engagements' } : { name: 'engagement', id, tab: tab ?? null }
+    if (id === undefined) return { name: 'engagements' }
+    return item === undefined ? { name: 'engagement', id, tab: tab ?? null } : { name: 'engagement', id, tab: tab ?? null, item }
+  }
+  if (head === 'question-sets' && tab === undefined) {
+    return id === undefined ? { name: 'question-sets' } : { name: 'question-set', id }
   }
   if (id !== undefined) return notFound
   if (head === 'settings') return { name: 'settings' }
@@ -34,8 +41,10 @@ export function parseRoute(hash: string): Route {
 }
 
 export function hrefFor(route: RouteTarget): string {
+  if (route.name === 'question-set') return `#/question-sets/${encodeURIComponent(route.id)}`
   if (route.name !== 'engagement') return `#/${route.name}`
-  const segments = route.tab === null ? [route.id] : [route.id, route.tab]
+  // An item lives inside a tab, so it is written only with one.
+  const segments = route.tab === null ? [route.id] : route.item === undefined ? [route.id, route.tab] : [route.id, route.tab, route.item]
   return `#/engagements/${segments.map(encodeURIComponent).join('/')}`
 }
 
