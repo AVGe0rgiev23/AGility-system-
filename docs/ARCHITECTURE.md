@@ -59,7 +59,7 @@ src/
   storage/      db.ts, repository.ts, derived.ts, sync.ts, transfer.ts
   engines/      scoring, roi, estimate, run-cost, calibration, signals
   render/       view-model, resolve, template, overrides, nodes; print layout (Stage 3)
-  hooks/        useStore, useTracedDraft, useConfigForm, useTransferFlow, useEngagementForm; useEngagement, useLibrary, useConfig, useDerived
+  hooks/        useStore, useTracedDraft, useConfigForm, useTransferFlow, useEngagementForm, useQuestionSetForm; discovery rules; useEngagement, useLibrary, useConfig, useDerived
   ui/           shell/, primitives/, views/
   app.tsx
 ```
@@ -301,7 +301,9 @@ element's title.
   whether the text on screen is invalid and so has not reached the parent, which
   still holds the last valid value. A form with a Save button blocks saving while
   any traced field is pending, so it never stores a figure other than the one on
-  screen.
+  screen. A box that unmounts reports itself unpending: its half-typed text goes
+  with it, so leaving the tab, or answering a question that hides another, cannot
+  leave a form refusing to save with no field on screen to fix.
 
 **Tables sort** when the screen passes a sort state and `onSort`. A sortable
 column gives a `sortValue`; its header becomes a button and carries `aria-sort`.
@@ -310,8 +312,8 @@ direction, text sorts by `en-GB` collation ignoring case and reading digits as
 numbers, and equal rows keep their order. The screen owns the state, so its
 choice can outlive the table.
 
-**Path-addressed forms.** Settings and the engagement detail edit a record by
-path. They share the path helpers (`hooks/form-paths.ts`) and the controls and
+**Path-addressed forms.** Settings, the engagement detail and the question-set
+editor edit a record by path. They share the path helpers (`hooks/form-paths.ts`) and the controls and
 save bar (`ui/views/form-controls.tsx`), which read a small `PathForm` interface.
 A table cell's control keeps its label for screen readers only, inside a
 positioned wrapper, so a hidden label cannot escape a horizontally scrolling table
@@ -414,7 +416,7 @@ default. Its editing model is `hooks/use-engagement-form.ts`.
   overview. An unknown id says whether the engagement does not exist or is stored
   but was left out for not validating.
 - **One draft per engagement** covers the slices this screen edits: company,
-  contacts, source, tags and next action.
+  contacts, source, tags, next action and discovery sessions.
   - Nothing else from the record is copied into the draft. Save writes the latest
     loaded engagement with the draft on top, then reloads, which recomputes its
     caches, so a stale copy of the rest can never be written back.
@@ -446,8 +448,66 @@ default. Its editing model is `hooks/use-engagement-form.ts`.
   signal extraction fills and confirms it (Stage 1, task 10).
 - **Contacts:** one table, with add and remove. A removal takes effect on Save, so
   Discard brings a contact back.
+- **Discovery:** a table of the sessions held, each opening in its own runner. A
+  row shows the set, kind, when it was held, completeness, the answer count and
+  how many problems are fixed inside it. A new session picks its set from the
+  Library, listing first the sets whose `appliesTo` the company matches, defaults
+  to now, and ticks its attendees from the contacts. Removal works like a
+  contact's.
 - **Deleting** asks first, naming the company and saying that a connected folder
   keeps its copy, listed as stale. It then returns to the list.
+
+**The discovery runner** opens at `#/engagements/<id>/discovery/<sessionId>`. Its
+rules are pure (`hooks/discovery-rules.ts`); the screen renders them.
+
+- **One row per visible question**, in the order they are asked: the text, help
+  text, kind, required marker, the control its kind needs, the four flags, and a
+  Clear that unsays the answer entirely rather than leaving a half-answer.
+- **Controls by kind.** Text and choice are an input and a select whose empty
+  option clears; boolean is a yes/no pair with no default; multi is a checkbox per
+  choice; number and duration are a `TracedInput`, whose pending text blocks Save
+  like any other.
+- **Visibility runs in question order.** A condition sees only answers to
+  questions that are visible and earlier, so what is on screen can always be read
+  top to bottom. An answer to a question that is later hidden is kept, counts
+  towards nothing, and is listed under the hidden count.
+- **Completeness is stored and recomputed on every answer,** shown with its
+  basis: "40% complete · 4 of 10 required answered". A session with no required
+  question showing is complete.
+- **A mapped answer lands on the engagement as it is given,** so the Company tab
+  shows it before the session ends, and one Save stores both. Beside the control a
+  note names the path and what is stored there now. A figure lands whole, keeping
+  its source and note, linked back to the answer and dated to the session. A multi
+  answer adds what is missing and never removes. Clearing an answer leaves the
+  path as it was: a figure already given is not unsaid by an empty box. A
+  `process.*` answer is recorded and lands nowhere until process mapping exists
+  (Stage 1, task 8), which the note says.
+- **Raw notes** sit alongside the answers, kept as typed.
+- **An answer's issues show on its own row**, matched by the
+  `discovery.<i>.answers.<j>` prefix, so a rule about any part of an answer is
+  fixed where the answer is given. The sessions table counts them per session.
+- **A question set that has gone** leaves the session readable: the answers are
+  listed by question id with a notice, and nothing further can be answered.
+
+**Question sets** are edited in the Library at `#/question-sets`, one set at
+`#/question-sets/<id>`, with the form model in `hooks/use-question-set-form.ts`.
+
+- **The list** shows each set's kind, what it applies to, its question count and
+  how many sessions use it. A set a session uses cannot be deleted, and the row
+  says how many. "Add the standard question sets" appears only while a seeded id
+  is missing.
+- **The editor** is path-addressed like Settings: set fields, then a table of
+  questions with their kind, required flag, unit, mapping, choices, help text,
+  order and removal. Ids are generated and shown but never edited, because
+  conditions name them.
+  - The `mapsTo` picker offers only the paths the question's kind can fill, so no
+    answer can land as the wrong type. Changing a kind drops what the new kind
+    cannot carry and keeps the mapping if it still fits.
+  - The condition builder nests all-of and any-of groups over equals, greater
+    than and includes, and a leaf picks only an earlier question, with the value
+    control following that question's kind.
+  - A condition naming a question the set does not have is refused here, although
+    the schema tolerates it, so none is ever written from the app.
 
 ## Security model
 

@@ -385,6 +385,24 @@ Why:
 - **Unique ids.** Sessions name their question set, and conditions and answers
   name questions, by id.
 
+### Seeded question sets
+
+Two question sets ship with the app (`schema/seed-question-sets.ts`), with
+readable ids so a session names what it ran:
+
+| Id | Name | Kind | Questions |
+|---|---|---|---|
+| `qs-teardown` | Teardown | teardown | 13, one branch |
+| `qs-full-discovery` | Full discovery | discovery | 36, branching through error, role-cost, compliance and integration follow-ups |
+
+- A new store is seeded with both. An existing store gets them only through "Add
+  the standard question sets", which adds the missing ids and touches nothing
+  else. A seed is an ordinary Library record once written: editing or deleting it
+  is allowed, and nothing puts it back unless asked.
+- Between them they use every path in the mapping table at least once, so a
+  session fills the Company record it can and records the rest for process
+  mapping.
+
 ## Process
 
 What the client actually does today. The raw material for opportunities.
