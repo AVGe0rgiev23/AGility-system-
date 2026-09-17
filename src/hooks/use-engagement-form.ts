@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { canonicalJson } from '../engines/inputs-hash'
 import type { Company, Contact } from '../schema/company'
+import type { Answer, DiscoverySession, Question, QuestionSet } from '../schema/discovery'
 import { EngagementSchema, type Engagement, type LeadSource } from '../schema/engagement'
 import type { TracedValue } from '../schema/traced'
+import { applyAnswer, tracedForAnswer, withDerived } from './discovery-rules'
 import {
   issuesByPath,
   numberWarnings,
@@ -18,9 +20,9 @@ import { parseNumberText } from './use-traced-draft'
 
 // The editing model behind the engagement detail, as pure functions like the Settings form.
 //
-// - One draft per engagement, over the slices this screen edits: company, contacts, source, tags and
-//   next action. Every other part of the record (caches, discovery, scope, history) is never copied into
-//   the draft, so saving can never write back a stale copy of it.
+// - One draft per engagement, over the slices this screen edits: company, contacts, source, tags, next
+//   action and discovery sessions. Every other part of the record (caches, scope, history) is never
+//   copied into the draft, so saving can never write back a stale copy of it.
 // - Fields are addressed by the engagement's own paths ('company.name', 'contacts.0.email'), which is
 //   where EngagementSchema reports, so every issue lands at its control.
 // - The draft is replaced only when the stored slices change from what it was started from. A reload
@@ -32,6 +34,7 @@ export interface EngagementEdits {
   source: LeadSource
   tags: string[]
   nextAction: Engagement['nextAction']
+  discovery: DiscoverySession[]
 }
 
 export interface EngagementFormState {
@@ -49,12 +52,16 @@ export interface EngagementFormState {
   generation: number
 }
 
-export type EngagementTab = 'overview' | 'company' | 'contacts'
+export type EngagementTab = 'overview' | 'company' | 'contacts' | 'discovery'
 
 // Leaves the screen shows but does not edit, each with the reason.
 export const NOT_EDITED: readonly { prefix: string; reason: string }[] = [
   { prefix: 'company.detectedStack', reason: 'Filled by signal extraction and confirmed there (Stage 1, task 10).' },
   { prefix: 'contacts.*.id', reason: 'Generated when the contact is added.' },
+  { prefix: 'discovery.*.id', reason: 'Generated when the session is started.' },
+  { prefix: 'discovery.*.questionSetId', reason: 'The question set is chosen when the session is started.' },
+  { prefix: 'discovery.*.kind', reason: 'Taken from the question set the session runs.' },
+  { prefix: 'discovery.*.completeness', reason: 'Computed from the required questions that show.' },
 ]
 
 const LIST_PATHS = ['contacts', 'tags', 'company.statedTools', 'company.constraints.compliance', 'company.detectedStack'] as const
@@ -82,8 +89,8 @@ const OPTIONAL_NUMBER = /^company\.employeeCount$/
 const TRACED = /^company\.blendedHourlyCost$/
 
 export function editsOf(engagement: Engagement): EngagementEdits {
-  const { company, contacts, source, tags, nextAction } = engagement
-  return { company, contacts, source, tags, nextAction }
+  const { company, contacts, source, tags, nextAction, discovery } = engagement
+  return { company, contacts, source, tags, nextAction, discovery }
 }
 
 export function initialEngagementForm(engagement: Engagement, generation = 0): EngagementFormState {
@@ -179,8 +186,8 @@ function editList(state: EngagementFormState, path: string, items: unknown[]): E
   }
 }
 
-// A new entry starts blank. A blank tag is refused by the schema; a blank stated tool or compliance
-// entry is not, and saves as typed.
+// A new entry starts blank, and the schema refuses a blank tag, stated tool or compliance entry, so the
+// row shows its issue until it is filled in or removed.
 export function addToList(state: EngagementFormState, path: StringList): EngagementFormState {
   return editList(state, path, [...listAt(state, path), ''])
 }
@@ -192,6 +199,118 @@ export function addContact(state: EngagementFormState, id: string): EngagementFo
 
 export function removeFromList(state: EngagementFormState, path: StringList | 'contacts', index: number): EngagementFormState {
   return editList(state, path, listAt(state, path).filter((_, at) => at !== index))
+}
+
+// ---- Discovery sessions ---------------------------------------------------------------------------
+
+export function sessionSetOf(sets: readonly QuestionSet[], session: DiscoverySession): QuestionSet | undefined {
+  return sets.find((set) => set.id === session.questionSetId)
+}
+
+export function addSession(state: EngagementFormState, session: DiscoverySession): EngagementFormState {
+  return { ...state, draft: { ...state.draft, discovery: [...state.draft.discovery, session] } }
+}
+
+export function removeSession(state: EngagementFormState, index: number): EngagementFormState {
+  const discovery = state.draft.discovery.filter((_, at) => at !== index)
+  return {
+    ...state,
+    draft: { ...state.draft, discovery },
+    texts: withoutTextsUnder(state.texts, 'discovery'),
+    pending: state.pending.filter((path) => !path.startsWith('discovery.')),
+  }
+}
+
+export function setAttendees(state: EngagementFormState, index: number, attendees: readonly string[]): EngagementFormState {
+  return withDraft(state, `discovery.${index}.attendees`, [...attendees])
+}
+
+// Every answer edit goes through here: it stores the answer, recomputes the session's completeness and
+// follow-ups, and lands a mapped answer on the company at once, so the Company tab shows what was said.
+// Clearing an answer leaves the company as it is: a figure already given is not unsaid by an empty box.
+function withAnswer(
+  state: EngagementFormState,
+  sets: readonly QuestionSet[],
+  sessionIndex: number,
+  question: Question,
+  edit: (existing: Answer | undefined) => Answer | undefined,
+): EngagementFormState {
+  const session = state.draft.discovery[sessionIndex]
+  if (session === undefined) return state
+  const existing = session.answers.find((answer) => answer.questionId === question.id)
+  const next = edit(existing)
+  const answers =
+    next === undefined
+      ? session.answers.filter((answer) => answer.questionId !== question.id)
+      : existing === undefined
+        ? [...session.answers, next]
+        : session.answers.map((answer) => (answer.questionId === question.id ? next : answer))
+  const set = sessionSetOf(sets, session)
+  const edited = set === undefined ? { ...session, answers } : withDerived({ ...session, answers }, set)
+  const discovery = state.draft.discovery.map((candidate, at) => (at === sessionIndex ? edited : candidate))
+  const company = next === undefined ? state.draft.company : applyAnswer(state.draft.company, question, next)
+  return { ...state, draft: { ...state.draft, discovery, company } }
+}
+
+function baseAnswer(question: Question, existing: Answer | undefined, id: string, value: Answer['value']): Answer {
+  return {
+    id: existing?.id ?? id,
+    questionId: question.id,
+    kind: question.kind,
+    value,
+    followUpTriggered: existing?.followUpTriggered ?? [],
+    flags: existing?.flags ?? [],
+  }
+}
+
+export function setAnswerValue(
+  state: EngagementFormState,
+  sets: readonly QuestionSet[],
+  sessionIndex: number,
+  question: Question,
+  value: Answer['value'],
+  id: string,
+): EngagementFormState {
+  return withAnswer(state, sets, sessionIndex, question, (existing) => baseAnswer(question, existing, id, value))
+}
+
+// A figure keeps its source and note, links back to this answer and is dated to the session.
+export function setAnswerTraced(
+  state: EngagementFormState,
+  sets: readonly QuestionSet[],
+  sessionIndex: number,
+  question: Question,
+  traced: TracedValue | null,
+  id: string,
+): EngagementFormState {
+  const heldAt = state.draft.discovery[sessionIndex]?.heldAt ?? ''
+  return withAnswer(state, sets, sessionIndex, question, (existing) => {
+    // An emptied figure is no answer at all, rather than an answer with nothing in it.
+    if (traced === null) return undefined
+    const answerId = existing?.id ?? id
+    return { ...baseAnswer(question, existing, id, traced.value), traced: tracedForAnswer(traced, answerId, heldAt) }
+  })
+}
+
+// Removes the answer entirely, so nothing counts it and nothing shows a half-answer.
+export function clearAnswer(state: EngagementFormState, sets: readonly QuestionSet[], sessionIndex: number, question: Question): EngagementFormState {
+  return withAnswer(state, sets, sessionIndex, question, () => undefined)
+}
+
+export function toggleAnswerFlag(
+  state: EngagementFormState,
+  sets: readonly QuestionSet[],
+  sessionIndex: number,
+  question: Question,
+  flag: Answer['flags'][number],
+  on: boolean,
+  id: string,
+): EngagementFormState {
+  return withAnswer(state, sets, sessionIndex, question, (existing) => {
+    const base = existing ?? baseAnswer(question, undefined, id, question.kind === 'multi' ? [] : question.kind === 'boolean' ? false : question.kind === 'text' || question.kind === 'choice' ? '' : 0)
+    const flags = on ? (base.flags.includes(flag) ? base.flags : [...base.flags, flag]) : base.flags.filter((candidate) => candidate !== flag)
+    return { ...base, flags }
+  })
 }
 
 // ---- Issues and saving ----------------------------------------------------------------------------
@@ -218,12 +337,27 @@ export function locatedPaths(draft: EngagementEdits): Set<string> {
     ...items('tags', draft.tags),
     ...items('company.statedTools', draft.company.statedTools),
     ...items('company.constraints.compliance', draft.company.constraints.compliance),
+    'discovery',
+    ...draft.discovery.flatMap((session, index) => [
+      `discovery.${index}.heldAt`,
+      `discovery.${index}.attendees`,
+      `discovery.${index}.rawNotes`,
+      // An answer shows on one row, so everything about it is shown there.
+      ...items(`discovery.${index}.answers`, session.answers),
+    ]),
   ])
 }
 
-export function otherProblems(draft: EngagementEdits, issues: readonly FormIssue[]): FormIssue[] {
+// An answer's row shows everything about that answer, so an issue anywhere under it is located there.
+export function locatesIssue(draft: EngagementEdits, path: string): boolean {
   const located = locatedPaths(draft)
-  return issues.filter((issue) => !located.has(issue.path))
+  if (located.has(path)) return true
+  if (!path.startsWith('discovery.')) return false
+  return [...located].some((candidate) => path.startsWith(`${candidate}.`))
+}
+
+export function otherProblems(draft: EngagementEdits, issues: readonly FormIssue[]): FormIssue[] {
+  return issues.filter((issue) => !locatesIssue(draft, issue.path))
 }
 
 // Which tab a path is edited on, or null for one with no field.
@@ -231,6 +365,7 @@ export function tabOf(path: string): EngagementTab | null {
   if (path === 'source' || path === 'nextAction' || path.startsWith('nextAction.') || path === 'tags' || path.startsWith('tags.')) return 'overview'
   if (path.startsWith('company.')) return 'company'
   if (path === 'contacts' || path.startsWith('contacts.')) return 'contacts'
+  if (path === 'discovery' || path.startsWith('discovery.')) return 'discovery'
   return null
 }
 
@@ -256,7 +391,7 @@ export function engagementFormView(state: EngagementFormState, update: Update) {
   const issues = formIssues(state)
   const byPath = issuesByPath(issues)
   const at = (path: string) => valueAt(state.draft, path)
-  const tabIssues: Record<EngagementTab, number> = { overview: 0, company: 0, contacts: 0 }
+  const tabIssues: Record<EngagementTab, number> = { overview: 0, company: 0, contacts: 0, discovery: 0 }
   for (const issue of issues) {
     const tab = tabOf(issue.path)
     if (tab !== null) tabIssues[tab]++
@@ -304,6 +439,22 @@ export function engagementFormView(state: EngagementFormState, update: Update) {
       // Made outside the state update, which React may run twice.
       const id = crypto.randomUUID()
       update((current) => addContact(current, id))
+    },
+    addSession: (session: DiscoverySession) => update((current) => addSession(current, session)),
+    removeSession: (index: number) => update((current) => removeSession(current, index)),
+    setAttendees: (index: number, attendees: readonly string[]) => update((current) => setAttendees(current, index, attendees)),
+    setAnswerValue: (sets: readonly QuestionSet[], index: number, question: Question, value: Answer['value']) => {
+      const id = crypto.randomUUID()
+      update((current) => setAnswerValue(current, sets, index, question, value, id))
+    },
+    setAnswerTraced: (sets: readonly QuestionSet[], index: number, question: Question, traced: TracedValue | null) => {
+      const id = crypto.randomUUID()
+      update((current) => setAnswerTraced(current, sets, index, question, traced, id))
+    },
+    clearAnswer: (sets: readonly QuestionSet[], index: number, question: Question) => update((current) => clearAnswer(current, sets, index, question)),
+    toggleAnswerFlag: (sets: readonly QuestionSet[], index: number, question: Question, flag: Answer['flags'][number], on: boolean) => {
+      const id = crypto.randomUUID()
+      update((current) => toggleAnswerFlag(current, sets, index, question, flag, on, id))
     },
     discard: () => update(discardEngagementEdits),
   }

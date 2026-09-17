@@ -96,6 +96,13 @@ export function withDerived(session: DiscoverySession, set: QuestionSet): Discov
   }
 }
 
+// A session starts empty: its kind comes from the set it runs, and its completeness from the questions
+// that show before anything is answered.
+export function newSession(id: string, set: QuestionSet, heldAt: string, attendees: readonly string[]): DiscoverySession {
+  const session: DiscoverySession = { id, kind: set.kind, questionSetId: set.id, heldAt, attendees: [...attendees], answers: [], rawNotes: '', completeness: 0 }
+  return withDerived(session, set)
+}
+
 // What a figure answering this question is recorded in, or null for a question that records no figure
 // (or an unmapped number question with no unit, which the schema refuses).
 export function measureOf(question: Question): Measure | null {
@@ -118,7 +125,10 @@ export function landsOnCompany(question: Question): boolean {
 }
 
 function addMissing(existing: readonly string[], added: readonly string[]): string[] {
-  return [...existing, ...added.filter((item) => !existing.includes(item))]
+  const result = [...existing]
+  // A repeat within the answer is still a repeat on the path, and the company schema refuses one.
+  for (const item of added) if (!result.includes(item)) result.push(item)
+  return result
 }
 
 // Lands a given answer on the company, live. An unanswered answer, one to an unmapped or process-mapped
