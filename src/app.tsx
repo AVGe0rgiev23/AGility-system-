@@ -33,7 +33,7 @@ function Page({ route, loaded, handle, appVersion, listPrefs, onListPrefs }: Pag
         />
       )
     case 'engagement':
-      return <EngagementView loaded={loaded} id={route.id} tab={route.tab} handle={handle} />
+      return <EngagementView loaded={loaded} id={route.id} tab={route.tab} item={route.item ?? null} handle={handle} />
     case 'question-sets':
       return <QuestionSetListView loaded={loaded} saveLibrary={handle.saveLibrary} />
     case 'question-set':

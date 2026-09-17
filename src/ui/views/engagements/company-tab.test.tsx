@@ -28,6 +28,7 @@ function render(state: EngagementFormState, industries: readonly string[] | null
       saveError={null}
       onSave={ignore}
       deletion={{ confirming: false, deleting: false, error: null, onAsk: ignore, onConfirm: ignore, onCancel: ignore }}
+      item={null}
       questionSets={[]}
       industries={industries}
     />,

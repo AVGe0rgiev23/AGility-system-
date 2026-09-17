@@ -1,4 +1,4 @@
-import { useId, type FocusEvent } from 'react'
+import { useEffect, useId, useRef, type FocusEvent } from 'react'
 import { useTracedDraft, type TracedField } from '../../hooks/use-traced-draft'
 import { CurrencySchema, SourceSchema, type Currency, type TracedValue } from '../../schema/traced'
 import { Field, fieldDescriptionId } from './field'
@@ -46,6 +46,13 @@ export function TracedInput(props: TracedInputProps) {
     onPendingChange: props.onPendingChange,
   })
   const invalid = issues.length > 0
+
+  // A box that is gone disagrees with nothing: it takes its half-typed text with it, so it stops
+  // blocking Save. Otherwise leaving the tab, or answering a question that hides this one, would leave
+  // the form refusing to save with no field on screen to fix.
+  const told = useRef(props.onPendingChange)
+  told.current = props.onPendingChange
+  useEffect(() => () => told.current?.(false), [])
 
   // Issues appear once focus leaves the whole row, not when moving from the value to its source.
   const leaveRow = (event: FocusEvent<HTMLDivElement>) => {

@@ -8,6 +8,7 @@ import { OtherProblems, SaveBar } from '../form-controls'
 import { CompanyTab } from './company-tab'
 import { ContactsTab } from './contacts-tab'
 import { DiscoveryTab } from './discovery-tab'
+import { SessionRunner } from './session-runner'
 import { OverviewTab, type Deletion } from './overview-tab'
 
 type LoadedStore = Extract<BootedStore, { phase: 'loaded' }>
@@ -42,6 +43,8 @@ export interface EngagementScreenProps {
   form: EngagementFormView
   // As addressed; null is the default tab.
   tab: string | null
+  // One record inside the tab, as addressed: a discovery session.
+  item: string | null
   saving: boolean
   saveError: string | null
   onSave: () => void
@@ -83,7 +86,7 @@ function TabNav({ form, active }: { form: EngagementFormView; active: string | u
 }
 
 // The screen, given everything it shows. EngagementDetail holds the state; this only renders it.
-export function EngagementScreen({ form, tab, saving, saveError, onSave, deletion, industries, questionSets }: EngagementScreenProps) {
+export function EngagementScreen({ form, tab, item, saving, saveError, onSave, deletion, industries, questionSets }: EngagementScreenProps) {
   const { saved } = form
   const active = ENGAGEMENT_TABS.find((candidate) => candidate.id === (tab ?? 'overview'))
 
@@ -129,7 +132,11 @@ export function EngagementScreen({ form, tab, saving, saveError, onSave, deletio
         ) : active.id === 'contacts' ? (
           <ContactsTab form={form} />
         ) : active.id === 'discovery' ? (
-          <DiscoveryTab form={form} questionSets={questionSets} />
+          item === null ? (
+            <DiscoveryTab form={form} questionSets={questionSets} />
+          ) : (
+            <SessionRunner form={form} sessionId={item} questionSets={questionSets} />
+          )
         ) : null}
       </div>
     </section>
@@ -143,12 +150,13 @@ function describeError(error: unknown): string {
 interface EngagementDetailProps {
   engagement: Engagement
   tab: string | null
+  item: string | null
   handle: Pick<StoreHandle, 'saveEngagement' | 'deleteEngagement'>
   industries: readonly string[] | null
   questionSets: readonly QuestionSet[] | null
 }
 
-function EngagementDetail({ engagement, tab, handle, industries, questionSets }: EngagementDetailProps) {
+function EngagementDetail({ engagement, tab, item, handle, industries, questionSets }: EngagementDetailProps) {
   const form = useEngagementForm(engagement)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -183,6 +191,7 @@ function EngagementDetail({ engagement, tab, handle, industries, questionSets }:
     <EngagementScreen
       form={form}
       tab={tab}
+      item={item}
       industries={industries}
       questionSets={questionSets}
       saving={saving}
@@ -235,10 +244,11 @@ export interface EngagementViewProps {
   loaded: LoadedStore
   id: string
   tab: string | null
+  item: string | null
   handle: Pick<StoreHandle, 'saveEngagement' | 'deleteEngagement'>
 }
 
-export function EngagementView({ loaded, id, tab, handle }: EngagementViewProps) {
+export function EngagementView({ loaded, id, tab, item, handle }: EngagementViewProps) {
   const engagement = loaded.load.store.engagements.find((candidate) => candidate.id === id)
   if (engagement === undefined) {
     const storedButInvalid = loaded.load.problems.some((problem) => problem.table === 'engagements' && problem.key === id)
@@ -250,6 +260,7 @@ export function EngagementView({ loaded, id, tab, handle }: EngagementViewProps)
       key={id}
       engagement={engagement}
       tab={tab}
+      item={item}
       handle={handle}
       industries={loaded.load.store.config?.industries ?? null}
       questionSets={loaded.load.store.library?.questionSets ?? null}
