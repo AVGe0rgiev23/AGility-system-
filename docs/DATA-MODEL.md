@@ -393,7 +393,7 @@ readable ids so a session names what it ran:
 | Id | Name | Kind | Questions |
 |---|---|---|---|
 | `qs-teardown` | Teardown | teardown | 13, one branch |
-| `qs-full-discovery` | Full discovery | discovery | 36, branching through error, role-cost, compliance and integration follow-ups |
+| `qs-full-discovery` | Full discovery | discovery | 37, branching through error, role-cost, compliance and integration follow-ups |
 
 - A new store is seeded with both. An existing store gets them only through "Add
   the standard question sets", which adds the missing ids and touches nothing
