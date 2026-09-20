@@ -508,6 +508,10 @@ rules are pure (`hooks/discovery-rules.ts`); the screen renders them.
     control following that question's kind.
   - A condition naming a question the set does not have is refused here, although
     the schema tolerates it, so none is ever written from the app.
+  - The first question offers no condition, because nothing precedes it. The schema
+    agrees: it refuses one naming this question or a later one, leaving only a name
+    from outside the set or an empty group, neither of which tests anything. This is
+    the rule, not a missing control.
 
 ## Security model
 
