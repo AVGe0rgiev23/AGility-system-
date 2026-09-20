@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatNumber, formatTraced, isRounded, localDate } from './format'
+import { formatNumber, formatTraced, fromLocalDateTime, isRounded, localDate, localDateTime } from './format'
 
 describe('formatNumber', () => {
   it('prints money, told by its currency, with exactly two decimals and grouping', () => {
@@ -41,5 +41,23 @@ describe('localDate', () => {
   it('writes the local calendar date as YYYY-MM-DD', () => {
     expect(localDate(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05')
     expect(localDate(new Date(2026, 11, 31, 0, 1))).toBe('2026-12-31')
+  })
+})
+
+describe('localDateTime and fromLocalDateTime', () => {
+  it('writes the local wall-clock time to the minute', () => {
+    expect(localDateTime(new Date(2026, 8, 18, 9, 5))).toBe('2026-09-18T09:05')
+    expect(localDateTime(new Date(2026, 11, 31, 23, 59, 59))).toBe('2026-12-31T23:59')
+  })
+
+  it('reads a box back as the instant it names, whatever the machine’s zone', () => {
+    const held = new Date(2026, 8, 18, 9, 5)
+    expect(fromLocalDateTime(localDateTime(held))).toBe(new Date(held.getTime() - held.getSeconds() * 1000 - held.getMilliseconds()).toISOString())
+  })
+
+  it('has no instant while the box holds nothing, or nothing a date can be read from', () => {
+    expect(fromLocalDateTime('')).toBeNull()
+    expect(fromLocalDateTime('2026-02-30T09:05')).toBeNull()
+    expect(fromLocalDateTime('soon')).toBeNull()
   })
 })

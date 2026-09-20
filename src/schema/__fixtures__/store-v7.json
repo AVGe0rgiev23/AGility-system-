@@ -1,0 +1,780 @@
+{
+  "meta": {
+    "schemaVersion": 7,
+    "createdAt": "2026-09-01T08:00:00.000Z",
+    "lastMigratedAt": null,
+    "appVersion": "0.0.0"
+  },
+  "config": {
+    "agency": {
+      "name": "AGility",
+      "email": "",
+      "website": ""
+    },
+    "agencyCurrency": "EUR",
+    "fxRates": {
+      "lastUpdated": "2026-09-14",
+      "rates": {
+        "EUR": 1,
+        "GBP": 0.85,
+        "USD": 1.08
+      }
+    },
+    "industries": [
+      "Professional Services",
+      "Software / Tech",
+      "E-commerce",
+      "Operations / Logistics"
+    ],
+    "pricing": {
+      "targetHourlyRate": 65,
+      "bands": [
+        {
+          "id": "pilot",
+          "name": "Pilot",
+          "maxHours": 15,
+          "floor": 600,
+          "ceiling": 900
+        },
+        {
+          "id": "full-workflow",
+          "name": "Full workflow",
+          "maxHours": 60,
+          "floor": 1800,
+          "ceiling": 4500
+        },
+        {
+          "id": "custom",
+          "name": "Custom",
+          "maxHours": null,
+          "floor": null,
+          "ceiling": null
+        }
+      ],
+      "supportMonthly": {
+        "floor": 350,
+        "ceiling": 800
+      }
+    },
+    "estimation": {
+      "overheads": {
+        "discovery": 0.1,
+        "testing": 0.2,
+        "documentation": 0.1,
+        "deployment": 0.08
+      },
+      "contingency": 0.15,
+      "fallbackPatternHours": 8
+    },
+    "scoring": {
+      "valueCeiling": 30000,
+      "effortCeiling": 80,
+      "hoursPerEffortPoint": 1.5,
+      "strategicMultipliers": {
+        "direct": 1.25,
+        "indirect": 1.05,
+        "none": 1
+      }
+    },
+    "roi": {
+      "conservativeFactor": 0.6,
+      "optimisticFactor": 1.25,
+      "discountRate": 0.08,
+      "horizonYears": 3,
+      "paybackWarningMonths": 18
+    },
+    "runCostDefaults": [],
+    "storage": {
+      "syncFolderHandleId": null,
+      "autoSyncOnWrite": true,
+      "lastSyncAt": null
+    },
+    "ai": {
+      "provider": "none",
+      "enabled": false
+    }
+  },
+  "library": {
+    "patterns": [
+      {
+        "id": "pat-email-triage",
+        "name": "Email triage",
+        "category": "email",
+        "problem": "Inbound requests are read and retyped by hand.",
+        "solution": "Incoming email is classified and routed automatically.",
+        "architecture": "Mailbox webhook, classifier, CRM write with retry.",
+        "requiredIntegrations": [
+          "Gmail",
+          "HubSpot"
+        ],
+        "complexity": "medium",
+        "baseHours": 12,
+        "risks": [
+          "Ambiguous emails need a human fallback"
+        ],
+        "clientExplanation": "Every request lands in the right place without anyone copying it.",
+        "blueprintSkeleton": {
+          "name": "Quote intake",
+          "nodes": [
+            {
+              "id": "n-1",
+              "kind": "trigger",
+              "name": "New email",
+              "purpose": "Starts on each quote email",
+              "requiresApproval": false
+            },
+            {
+              "id": "n-2",
+              "kind": "action",
+              "name": "Create deal",
+              "purpose": "Creates the HubSpot deal",
+              "service": "HubSpot",
+              "requiresApproval": false,
+              "advisoryHours": 3
+            }
+          ],
+          "edges": [
+            {
+              "from": "n-1",
+              "to": "n-2"
+            }
+          ]
+        },
+        "codeNotes": "Keep the classifier prompt versioned.",
+        "usedInEngagements": [
+          "eng-1"
+        ]
+      }
+    ],
+    "questionSets": [
+      {
+        "id": "qs-discovery",
+        "name": "Full discovery",
+        "kind": "discovery",
+        "appliesTo": {
+          "industries": [
+            "logistics"
+          ],
+          "minEmployees": 5
+        },
+        "questions": [
+          {
+            "id": "q-hourly-cost",
+            "text": "Roughly what does an hour of this person’s time cost you?",
+            "kind": "number",
+            "required": true,
+            "showIf": {
+              "answerId": "q-has-staff",
+              "equals": true
+            },
+            "mapsTo": "company.blendedHourlyCost",
+            "suggestsPatterns": [
+              "pat-email-triage"
+            ]
+          }
+        ]
+      }
+    ],
+    "templates": [
+      {
+        "id": "tpl-proposal",
+        "kind": "proposal",
+        "name": "Standard proposal",
+        "sections": [
+          {
+            "id": "executive-summary",
+            "heading": "Executive summary",
+            "body": "{{company.name}} spends too long retyping quotes."
+          },
+          {
+            "id": "deliverables",
+            "heading": "Deliverables",
+            "body": "{{name}}",
+            "showIf": "scope.deliverables",
+            "repeatOver": "scope.deliverables"
+          }
+        ]
+      }
+    ],
+    "calibration": [
+      {
+        "patternId": "pat-email-triage",
+        "samples": [
+          {
+            "engagementId": "eng-0",
+            "estimatedHours": 20,
+            "actualHours": 26,
+            "completedAt": "2026-08-30T17:00:00.000Z"
+          }
+        ],
+        "multiplier": 1,
+        "sampleCount": 1,
+        "trustworthy": false
+      }
+    ]
+  },
+  "engagements": [
+    {
+      "id": "eng-1",
+      "createdAt": "2026-09-01T08:00:00.000Z",
+      "updatedAt": "2026-09-13T11:00:00.000Z",
+      "company": {
+        "name": "Rila Logistics",
+        "website": "https://rila-logistics.example",
+        "industry": "logistics",
+        "employeeCount": 40,
+        "locationCountry": "BG",
+        "currency": "EUR",
+        "blendedHourlyCost": {
+          "value": 16,
+          "unit": "EUR/hour",
+          "currency": "EUR",
+          "source": "estimated"
+        },
+        "detectedStack": [
+          {
+            "name": "HubSpot",
+            "category": "crm",
+            "evidence": "js.hs-scripts.com/1234567.js",
+            "confidence": "high",
+            "confirmed": false
+          }
+        ],
+        "statedTools": [
+          "Google Sheets",
+          "HubSpot"
+        ],
+        "sourceOfTruth": "HubSpot for contacts, Sheets for jobs",
+        "constraints": {
+          "compliance": [
+            "GDPR"
+          ]
+        },
+        "preferredDeliveryModel": "hybrid"
+      },
+      "contacts": [
+        {
+          "id": "ct-1",
+          "name": "Marta Ivanova",
+          "role": "Operations lead",
+          "isDecisionMaker": true
+        }
+      ],
+      "stage": "IMPLEMENTATION",
+      "source": "teardown",
+      "stageHistory": [
+        {
+          "stage": "LEAD",
+          "at": "2026-09-01T08:00:00.000Z"
+        },
+        {
+          "stage": "WON",
+          "at": "2026-09-12T16:00:00.000Z",
+          "note": "Signed the SOW"
+        },
+        {
+          "stage": "IMPLEMENTATION",
+          "at": "2026-09-13T09:00:00.000Z"
+        }
+      ],
+      "discovery": [
+        {
+          "id": "ds-1",
+          "kind": "discovery",
+          "questionSetId": "qs-discovery",
+          "heldAt": "2026-09-10T09:00:00.000Z",
+          "attendees": [
+            "Marta Ivanova"
+          ],
+          "answers": [
+            {
+              "id": "ans-hours",
+              "questionId": "q-hours",
+              "kind": "number",
+              "value": 4,
+              "traced": {
+                "value": 4,
+                "unit": "hours/week",
+                "source": "client-stated",
+                "note": "Marta said 'about 4 hours, most weeks'",
+                "capturedAt": "2026-09-10T09:30:00.000Z",
+                "answerId": "ans-hours"
+              },
+              "followUpTriggered": [
+                "q-hours-detail"
+              ],
+              "flags": [
+                "pain"
+              ]
+            }
+          ],
+          "rawNotes": "Keen to start before peak season.",
+          "completeness": 60
+        }
+      ],
+      "processes": [
+        {
+          "id": "proc-1",
+          "name": "Quote request to CRM entry",
+          "description": "Inbound quote emails are retyped into HubSpot by hand.",
+          "owner": "Dispatcher",
+          "frequency": {
+            "occurrencesPerMonth": {
+              "value": 120,
+              "unit": "count/month",
+              "source": "client-stated"
+            },
+            "minutesPerOccurrence": {
+              "value": 12,
+              "unit": "minutes",
+              "source": "measured"
+            },
+            "peopleInvolved": {
+              "value": 2,
+              "unit": "count",
+              "source": "client-stated"
+            }
+          },
+          "roleHourlyCost": null,
+          "steps": [
+            {
+              "id": "step-1",
+              "action": "Copy quote request from email into CRM",
+              "system": "HubSpot",
+              "isManual": true,
+              "isBottleneck": true,
+              "waitTimeMinutes": 90
+            }
+          ],
+          "systemsTouched": [
+            "Gmail",
+            "HubSpot"
+          ],
+          "painPoints": [
+            "Retyping",
+            "Missed follow-ups"
+          ],
+          "errorProfile": {
+            "errorRatePercent": {
+              "value": 5,
+              "unit": "percent",
+              "source": "estimated"
+            },
+            "costPerError": {
+              "value": 40,
+              "unit": "EUR",
+              "currency": "EUR",
+              "source": "estimated"
+            },
+            "errorDescription": "Wrong delivery address copied"
+          },
+          "revenueImpact": "direct",
+          "customerFacing": true
+        }
+      ],
+      "opportunities": [
+        {
+          "id": "opp-1",
+          "processIds": [
+            "proc-1"
+          ],
+          "title": "Automatic quote intake",
+          "summary": "Quote emails land in HubSpot as structured deals within a minute.",
+          "patternIds": [
+            "pat-email-triage",
+            "pat-crm-sync"
+          ],
+          "primaryPatternId": "pat-email-triage",
+          "automatablePercent": {
+            "value": 70,
+            "unit": "percent",
+            "source": "estimated"
+          },
+          "errorReductionPercent": {
+            "value": 80,
+            "unit": "percent",
+            "source": "default"
+          },
+          "effortInputs": {
+            "integrations": [
+              {
+                "name": "HubSpot",
+                "hasPublicApi": true,
+                "authAvailable": true
+              }
+            ],
+            "dataReadiness": "semi-structured",
+            "approvalSteps": 1,
+            "complianceFlags": [],
+            "volumeTier": "medium",
+            "novelty": "known-pattern",
+            "requiresHumanInLoop": false
+          },
+          "scoring": {
+            "annualValue": 18240,
+            "weightedValue": 22800,
+            "valueScore": 76,
+            "effortPoints": 9,
+            "rawBuildHours": 21.5,
+            "effortScore": 27,
+            "confidence": 82,
+            "priorityIndex": 80.4,
+            "quadrant": "quick-win",
+            "hoursSavedPerMonth": 33.6,
+            "breakdown": [
+              {
+                "label": "Hours wasted per month",
+                "value": 48,
+                "unit": "hours/month",
+                "source": "client-stated",
+                "formula": "(120 × 12 × 2) / 60",
+                "audience": "client"
+              }
+            ],
+            "assumptions": [
+              {
+                "value": 4,
+                "unit": "hours/week",
+                "source": "client-stated",
+                "note": "Marta said 'about 4 hours, most weeks'",
+                "capturedAt": "2026-09-10T09:30:00.000Z",
+                "answerId": "ans-hours"
+              }
+            ],
+            "warnings": [],
+            "inputsHash": "h-scoring",
+            "computedAt": "2026-09-14T08:00:00.000Z"
+          }
+        }
+      ],
+      "blueprints": [
+        {
+          "id": "bp-1",
+          "opportunityId": "opp-1",
+          "name": "Quote intake",
+          "nodes": [
+            {
+              "id": "n-1",
+              "kind": "trigger",
+              "name": "New email",
+              "purpose": "Starts on each quote email",
+              "requiresApproval": false
+            },
+            {
+              "id": "n-2",
+              "kind": "action",
+              "name": "Create deal",
+              "purpose": "Creates the HubSpot deal",
+              "service": "HubSpot",
+              "requiresApproval": false,
+              "advisoryHours": 3
+            }
+          ],
+          "edges": [
+            {
+              "from": "n-1",
+              "to": "n-2"
+            }
+          ]
+        }
+      ],
+      "scope": {
+        "selectedOpportunityIds": [
+          "opp-1"
+        ],
+        "deliveryModel": "hybrid",
+        "deliverables": [
+          {
+            "id": "del-1",
+            "name": "Quote intake automation",
+            "description": "Quote emails become HubSpot deals without retyping.",
+            "acceptanceCriteria": [
+              "A test quote email creates exactly one HubSpot deal within 2 minutes"
+            ],
+            "opportunityId": "opp-1"
+          }
+        ],
+        "exclusions": [
+          "Historic email backfill"
+        ],
+        "assumptions": [
+          "HubSpot API access is granted in week 1"
+        ],
+        "phases": [
+          {
+            "id": "ph-1",
+            "name": "Build",
+            "description": "Build and test the intake flow.",
+            "order": 1,
+            "estimatedWeeks": 2
+          }
+        ],
+        "supportRetainerMonthly": 350,
+        "runCostItems": [
+          {
+            "id": "rc-hosting",
+            "label": "Worker hosting",
+            "category": "hosting",
+            "monthlyCost": 5,
+            "paidBy": {
+              "fully-managed": "agency",
+              "client-owned": "client",
+              "hybrid": "client"
+            },
+            "usageBased": false
+          },
+          {
+            "id": "rc-ai",
+            "label": "Email classification model",
+            "category": "ai",
+            "monthlyCost": null,
+            "paidBy": {
+              "fully-managed": "agency",
+              "client-owned": "client",
+              "hybrid": "client"
+            },
+            "usageBased": true,
+            "usageFormula": {
+              "callsPerMonth": 3000,
+              "avgInputTokens": 1200,
+              "avgOutputTokens": 150,
+              "inputPricePerMTok": 0.9,
+              "outputPricePerMTok": 4.5
+            }
+          }
+        ],
+        "estimate": {
+          "calibratedHours": 21.5,
+          "overheadBreakdown": [
+            {
+              "label": "discovery",
+              "hours": 2.15
+            },
+            {
+              "label": "testing",
+              "hours": 4.3
+            },
+            {
+              "label": "documentation",
+              "hours": 2.15
+            },
+            {
+              "label": "deployment",
+              "hours": 1.72
+            }
+          ],
+          "contingencyHours": 4.773,
+          "totalHours": 36.593,
+          "bandId": "full-workflow",
+          "indicativePrice": 2378.545,
+          "price": 2378.545,
+          "effectiveHourlyRate": 65,
+          "flags": [
+            "UNCALIBRATED_PATTERN"
+          ],
+          "perOpportunity": [
+            {
+              "opportunityId": "opp-1",
+              "rawHours": 21.5,
+              "multiplier": 1,
+              "trustworthy": false,
+              "calibratedHours": 21.5
+            }
+          ],
+          "advisoryBlueprintHours": null,
+          "inputsHash": "h-estimate",
+          "computedAt": "2026-09-14T08:00:00.000Z"
+        },
+        "runCost": {
+          "perModel": {
+            "fully-managed": {
+              "clientMonthly": 5,
+              "agencyMonthly": 0,
+              "agencyAnnual": 0,
+              "lineItems": []
+            },
+            "client-owned": {
+              "clientMonthly": 5,
+              "agencyMonthly": 0,
+              "agencyAnnual": 0,
+              "lineItems": []
+            },
+            "hybrid": {
+              "clientMonthly": 5,
+              "agencyMonthly": 0,
+              "agencyAnnual": 0,
+              "lineItems": []
+            }
+          },
+          "selectedModel": "hybrid",
+          "clientMonthly": 5,
+          "agencyMonthly": 0,
+          "agencyAnnual": 0,
+          "warnings": [],
+          "inputsHash": "h-runcost",
+          "computedAt": "2026-09-14T08:00:00.000Z"
+        },
+        "roi": {
+          "scenarios": {
+            "conservative": {
+              "grossAnnualValue": 18240,
+              "netAnnualBenefit": 18180,
+              "paybackMonths": null,
+              "roiYear1": 6.64,
+              "roiYear3": 21.93,
+              "npv": 44473
+            },
+            "expected": {
+              "grossAnnualValue": 18240,
+              "netAnnualBenefit": 18180,
+              "paybackMonths": 1.57,
+              "roiYear1": 6.64,
+              "roiYear3": 21.93,
+              "npv": 44473
+            },
+            "optimistic": {
+              "grossAnnualValue": 18240,
+              "netAnnualBenefit": 18180,
+              "paybackMonths": 1.57,
+              "roiYear1": 6.64,
+              "roiYear3": 21.93,
+              "npv": 44473
+            }
+          },
+          "hoursSavedPerMonth": 33.6,
+          "hoursSavedPerYear": 403.2,
+          "implementationCost": 2378.545,
+          "annualRunCost": 60,
+          "assumptions": [
+            {
+              "value": 4,
+              "unit": "hours/week",
+              "source": "client-stated",
+              "note": "Marta said 'about 4 hours, most weeks'",
+              "capturedAt": "2026-09-10T09:30:00.000Z",
+              "answerId": "ans-hours"
+            }
+          ],
+          "lowestConfidence": 82,
+          "warnings": [],
+          "inputsHash": "h-roi",
+          "computedAt": "2026-09-14T08:00:00.000Z"
+        }
+      },
+      "artifacts": {
+        "teardown": null,
+        "proposal": {
+          "templateId": "tpl-proposal",
+          "overrides": [
+            {
+              "sectionId": "executive-summary",
+              "content": "Rewritten opening paragraph.",
+              "editedAt": "2026-09-12T14:00:00.000Z",
+              "baseInputsHash": "h-estimate",
+              "baseInputs": null,
+              "rebasedFrom": null
+            }
+          ],
+          "lastRenderedAt": "2026-09-12T14:05:00.000Z",
+          "sentAt": null,
+          "version": 2
+        },
+        "sow": null,
+        "projectPlan": null,
+        "handoverDocs": null,
+        "caseStudy": null
+      },
+      "project": {
+        "startedAt": "2026-09-13T09:00:00.000Z",
+        "phases": [
+          {
+            "id": "ph-1",
+            "name": "Build",
+            "description": "Build and test the intake flow.",
+            "order": 1,
+            "estimatedWeeks": 2
+          }
+        ],
+        "tasks": [
+          {
+            "id": "task-1",
+            "phaseId": "ph-1",
+            "title": "Parse quote emails",
+            "patternId": "pat-email-triage",
+            "estimatedHours": 6,
+            "actualHours": null,
+            "status": "doing"
+          }
+        ],
+        "timeLog": [
+          {
+            "id": "te-1",
+            "taskId": "task-1",
+            "minutes": 90,
+            "at": "2026-09-13T11:00:00.000Z",
+            "note": "Parser first pass"
+          }
+        ],
+        "status": "active",
+        "deliveredAt": null
+      },
+      "tags": [
+        "logistics"
+      ],
+      "notes": [
+        {
+          "id": "note-1",
+          "at": "2026-09-10T10:00:00.000Z",
+          "body": "Prefers async updates.",
+          "tags": []
+        }
+      ],
+      "nextAction": {
+        "text": "Send week 1 update",
+        "due": "2026-09-18"
+      }
+    },
+    {
+      "id": "eng-2",
+      "createdAt": "2026-09-14T08:00:00.000Z",
+      "updatedAt": "2026-09-14T08:00:00.000Z",
+      "company": {
+        "name": "Solo Bakery",
+        "industry": "E-commerce",
+        "currency": "EUR",
+        "blendedHourlyCost": null,
+        "detectedStack": [],
+        "statedTools": [],
+        "constraints": {
+          "compliance": []
+        }
+      },
+      "contacts": [],
+      "stage": "LEAD",
+      "source": "inbound-form",
+      "stageHistory": [
+        {
+          "stage": "LEAD",
+          "at": "2026-09-14T08:00:00.000Z"
+        }
+      ],
+      "discovery": [],
+      "processes": [],
+      "opportunities": [],
+      "blueprints": [],
+      "scope": null,
+      "artifacts": {
+        "teardown": null,
+        "proposal": null,
+        "sow": null,
+        "projectPlan": null,
+        "handoverDocs": null,
+        "caseStudy": null
+      },
+      "project": null,
+      "tags": [],
+      "notes": [],
+      "nextAction": null
+    }
+  ]
+}

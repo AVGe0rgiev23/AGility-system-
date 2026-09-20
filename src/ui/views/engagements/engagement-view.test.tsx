@@ -20,6 +20,8 @@ function render(state: EngagementFormState, tab: string | null = null, patch: { 
       saveError={patch.saveError ?? null}
       onSave={ignore}
       deletion={patch.deletion ?? NO_DELETION}
+      item={null}
+      questionSets={[]}
       industries={['Professional Services', 'logistics']}
     />,
   )
@@ -114,13 +116,13 @@ describe('EngagementView', () => {
   const handle = { saveEngagement: () => Promise.resolve({ ok: true as const }), deleteEngagement: () => Promise.resolve({ ok: true as const }) }
 
   it('opens a stored engagement', () => {
-    expect(renderToStaticMarkup(<EngagementView loaded={loaded()} id="eng-2" tab={null} handle={handle} />)).toContain('Solo Bakery')
+    expect(renderToStaticMarkup(<EngagementView loaded={loaded()} id="eng-2" tab={null} item={null} handle={handle} />)).toContain('Solo Bakery')
   })
 
   it('says there is no such engagement, or that it is stored but does not validate', () => {
-    expect(renderToStaticMarkup(<EngagementView loaded={loaded()} id="eng-9" tab={null} handle={handle} />)).toContain('There is no engagement <span class="num">eng-9</span>.')
+    expect(renderToStaticMarkup(<EngagementView loaded={loaded()} id="eng-9" tab={null} item={null} handle={handle} />)).toContain('There is no engagement <span class="num">eng-9</span>.')
     const problem = { table: 'engagements' as const, key: 'eng-9', message: 'does not validate', issues: [] }
-    expect(renderToStaticMarkup(<EngagementView loaded={loaded([problem])} id="eng-9" tab={null} handle={handle} />)).toContain('is stored but does not validate')
+    expect(renderToStaticMarkup(<EngagementView loaded={loaded([problem])} id="eng-9" tab={null} item={null} handle={handle} />)).toContain('is stored but does not validate')
     expect(renderToStaticMarkup(<EngagementNotFound id="x" storedButInvalid={false} />)).toContain('href="#/engagements"')
   })
 })

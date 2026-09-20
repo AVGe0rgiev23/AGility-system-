@@ -14,6 +14,15 @@ describe('parseRoute', () => {
     expect(parseRoute('#/engagements/eng-1/processes')).toEqual({ name: 'engagement', id: 'eng-1', tab: 'processes' })
     expect(parseRoute('#/settings')).toEqual({ name: 'settings' })
     expect(parseRoute('#/primitives')).toEqual({ name: 'primitives' })
+    expect(parseRoute('#/question-sets')).toEqual({ name: 'question-sets' })
+    expect(parseRoute('#/question-sets/qs-teardown')).toEqual({ name: 'question-set', id: 'qs-teardown' })
+  })
+
+  it('parses an item inside an engagement tab, such as a discovery session', () => {
+    expect(parseRoute('#/engagements/eng-1/discovery/ds-7')).toEqual({ name: 'engagement', id: 'eng-1', tab: 'discovery', item: 'ds-7' })
+    expect(parseRoute('#/engagements/eng-1/discovery')).not.toHaveProperty('item')
+    expect(parseRoute('#/engagements/eng-1/discovery/ds-7/extra')).toEqual({ name: 'not-found', path: '/engagements/eng-1/discovery/ds-7/extra' })
+    expect(parseRoute('#/question-sets/qs-teardown/extra')).toEqual({ name: 'not-found', path: '/question-sets/qs-teardown/extra' })
   })
 
   it('tolerates trailing and doubled slashes', () => {
@@ -25,9 +34,9 @@ describe('parseRoute', () => {
   it('reports an unknown address as not found, keeping the path for display', () => {
     expect(parseRoute('#/pipeline')).toEqual({ name: 'not-found', path: '/pipeline' })
     expect(parseRoute('#/settings/extra')).toEqual({ name: 'not-found', path: '/settings/extra' })
-    expect(parseRoute('#/engagements/eng-1/processes/extra')).toEqual({
+    expect(parseRoute('#/engagements/eng-1/processes/p-1/extra')).toEqual({
       name: 'not-found',
-      path: '/engagements/eng-1/processes/extra',
+      path: '/engagements/eng-1/processes/p-1/extra',
     })
   })
 
@@ -44,9 +53,17 @@ describe('hrefFor', () => {
     expect(hrefFor({ name: 'primitives' })).toBe('#/primitives')
   })
 
-  it('writes an engagement with and without a tab', () => {
+  it('writes an engagement with and without a tab, and an item only inside a tab', () => {
     expect(hrefFor({ name: 'engagement', id: 'eng-1', tab: null })).toBe('#/engagements/eng-1')
     expect(hrefFor({ name: 'engagement', id: 'eng-1', tab: 'scope' })).toBe('#/engagements/eng-1/scope')
+    expect(hrefFor({ name: 'engagement', id: 'eng-1', tab: 'discovery', item: 'ds 7' })).toBe('#/engagements/eng-1/discovery/ds%207')
+    expect(hrefFor({ name: 'engagement', id: 'eng-1', tab: null, item: 'ds-7' })).toBe('#/engagements/eng-1')
+  })
+
+  it('writes the question-set list and one question set', () => {
+    expect(hrefFor({ name: 'question-sets' })).toBe('#/question-sets')
+    expect(hrefFor({ name: 'question-set', id: 'qs/1' })).toBe('#/question-sets/qs%2F1')
+    expect(parseRoute(hrefFor({ name: 'question-set', id: 'Солидна/?' }))).toEqual({ name: 'question-set', id: 'Солидна/?' })
   })
 
   it('round-trips ids that contain separators, escapes, spaces and non-ASCII text', () => {
@@ -55,6 +72,10 @@ describe('hrefFor', () => {
       for (const tab of [null, 'discovery', 'a/b']) {
         const route: RouteTarget = { name: 'engagement', id, tab }
         expect(parseRoute(hrefFor(route)), `${id} ${String(tab)}`).toEqual(route)
+        if (tab !== null) {
+          const withItem: RouteTarget = { name: 'engagement', id, tab, item: id }
+          expect(parseRoute(hrefFor(withItem)), `${id} ${tab} item`).toEqual(withItem)
+        }
       }
     }
   })

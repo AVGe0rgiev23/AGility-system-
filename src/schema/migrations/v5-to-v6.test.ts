@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import storeV5 from '../__fixtures__/store-v5.json'
 import { WholeStoreSchema } from '../store'
+import { CURRENT_SCHEMA_VERSION } from '../version'
 import { MigrationError, runMigrations } from './run-migrations'
 import { migrateV5ToV6 } from './v5-to-v6'
 
@@ -42,11 +43,14 @@ describe('migrateV5ToV6', () => {
     expect(migrateV5ToV6(v5Store())).toEqual(expectedV6())
   })
 
-  it('migrates the v5 fixture to a store that validates at version 6, changing nothing Zod would add or strip', () => {
+  it('migrates the v5 fixture through the whole chain to a store that validates, changing nothing Zod would add or strip', () => {
     const migrated = runMigrations(v5Store(), 5)
     expect(WholeStoreSchema.safeParse(migrated).success).toBe(true)
-    expect(migrated.meta.schemaVersion).toBe(6)
-    expect(migrated).toEqual(expectedV6())
+    expect(migrated.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    // Later steps add only what they document; nothing else about the v5 data changes.
+    const expected = expectedV6()
+    at(expected, 'meta').schemaVersion = CURRENT_SCHEMA_VERSION
+    expect(migrated).toEqual(expected)
   })
 
   it('leaves v5 data that breaks a capture rule as it is, so the migration fails with each issue path', () => {

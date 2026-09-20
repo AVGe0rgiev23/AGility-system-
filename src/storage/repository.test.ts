@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import storeV1 from '../schema/__fixtures__/store-v1.json'
 import { calibrationRecord, engagement, library, meta, newEngagement, wholeStore } from '../schema/__fixtures__/records'
 import { defaultConfig } from '../schema/config'
+import { seedQuestionSets } from '../schema/seed-question-sets'
 import type { Engagement } from '../schema/engagement'
 import { CURRENT_SCHEMA_VERSION } from '../schema/version'
 import { plant, plantedStore, readRaw } from './__fixtures__/raw-idb'
@@ -45,13 +46,13 @@ function refusal(result: LoadResult): Extract<LoadResult, { status: 'refused' }>
 }
 
 describe('load: fresh database', () => {
-  it('seeds meta, the default Config and an empty Library, and loads them', async () => {
+  it('seeds meta, the default Config and a Library holding only the standard question sets, and loads them', async () => {
     const { repository, changes } = setup()
     const result = loaded(await repository.load())
     expect(result.seeded).toBe(true)
     expect(result.store.meta).toEqual({ schemaVersion: CURRENT_SCHEMA_VERSION, createdAt: T1, lastMigratedAt: null, appVersion: '0.1.0' })
     expect(result.store.config).toEqual(defaultConfig())
-    expect(result.store.library).toEqual({ patterns: [], questionSets: [], templates: [], calibration: [] })
+    expect(result.store.library).toEqual({ patterns: [], questionSets: seedQuestionSets(), templates: [], calibration: [] })
     expect(result.store.engagements).toEqual([])
     expect(changes.map((change) => change.kind)).toEqual(['store'])
     expect(loaded(await repository.load()).seeded).toBe(false)

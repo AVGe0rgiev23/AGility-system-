@@ -5,6 +5,7 @@ import { EngagementSchema, type Engagement } from '../schema/engagement'
 import { LibrarySchema, type Library } from '../schema/library'
 import { MetaSchema, type Meta } from '../schema/meta'
 import { MigrationError, runMigrations } from '../schema/migrations/run-migrations'
+import { seedQuestionSets } from '../schema/seed-question-sets'
 import { WholeStoreSchema, type WholeStore } from '../schema/store'
 import { CURRENT_SCHEMA_VERSION } from '../schema/version'
 import { createDatabase, DATABASE_NAME } from './db'
@@ -85,8 +86,10 @@ export interface RepositoryOptions {
 
 export type Repository = ReturnType<typeof createRepository>
 
-function emptyLibrary(): Library {
-  return { patterns: [], questionSets: [], templates: [], calibration: [] }
+// A new store starts with the standard question sets and nothing else, the way Config starts from its
+// defaults. Every other collection fills from use.
+function seedLibrary(): Library {
+  return { patterns: [], questionSets: seedQuestionSets(), templates: [], calibration: [] }
 }
 
 function describeError(error: unknown): string {
@@ -155,7 +158,7 @@ export function createRepository(options: RepositoryOptions) {
     const store: WholeStore = {
       meta: { schemaVersion: CURRENT_SCHEMA_VERSION, createdAt: clock(), lastMigratedAt: null, appVersion },
       config: defaultConfig(),
-      library: emptyLibrary(),
+      library: seedLibrary(),
       engagements: [],
     }
     await writeWholeStore(store)
