@@ -39,6 +39,47 @@ describe('Table', () => {
     expect(html).toContain('None yet')
   })
 
+  it('is not sortable without onSort, even on a column with a sort value', () => {
+    const sortable: Column<Row>[] = [{ id: 'name', header: 'Company', cell: (row) => row.name, sortValue: (row) => row.name }]
+    const html = renderToStaticMarkup(<Table caption="Engagements" columns={sortable} rows={[]} rowKey={(row) => row.id} empty="None yet" />)
+    expect(html).not.toContain('<button')
+    expect(html).not.toContain('aria-sort')
+  })
+
+  it('makes a sortable header a button, marks the sorted column, and shows rows in its order', () => {
+    const sortable: Column<Row>[] = [
+      { id: 'name', header: 'Company', cell: (row) => row.name, sortValue: (row) => row.name },
+      { id: 'hours', header: 'Hours', numeric: true, cell: (row) => row.hours, sortValue: (row) => row.hours },
+      { id: 'note', header: 'Note', cell: () => '' },
+    ]
+    const rows: Row[] = [
+      { id: 'a', name: 'Rila Logistics', hours: 42 },
+      { id: 'b', name: 'Solo Bakery', hours: 7.5 },
+      { id: 'c', name: 'Acme', hours: 12 },
+    ]
+    const html = renderToStaticMarkup(
+      <Table caption="Engagements" columns={sortable} rows={rows} rowKey={(row) => row.id} empty="None yet" sort={{ columnId: 'hours', direction: 'descending' }} onSort={() => undefined} />,
+    )
+    expect(html).toContain('<th scope="col" aria-sort="none"')
+    expect(html).toContain('<th scope="col" aria-sort="descending"')
+    expect(html.match(/<button type="button"/g)).toHaveLength(2)
+    expect(html).toContain('>Hours<span aria-hidden="true" class="num">↓</span></button>')
+    expect(html).toContain('<th scope="col" class="h-7 border-b px-2 text-xs font-normal whitespace-nowrap text-muted text-left">Note</th>')
+    const order = ['Rila Logistics', 'Acme', 'Solo Bakery'].map((name) => html.indexOf(`>${name}</td>`))
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+  })
+
+  it('shows rows as given when the sort names a column that cannot sort', () => {
+    const rows: Row[] = [
+      { id: 'a', name: 'Solo Bakery', hours: 1 },
+      { id: 'b', name: 'Acme', hours: 2 },
+    ]
+    const html = renderToStaticMarkup(
+      <Table caption="Engagements" columns={columns} rows={rows} rowKey={(row) => row.id} empty="None yet" sort={{ columnId: 'name', direction: 'ascending' }} onSort={() => undefined} />,
+    )
+    expect(html.indexOf('>Solo Bakery</td>')).toBeLessThan(html.indexOf('>Acme</td>'))
+  })
+
   it('renders cell text containing markup as text', () => {
     const rows: Row[] = [{ id: 'x', name: '<img src=x onerror=alert(1)>', hours: 1 }]
     const html = renderToStaticMarkup(<Table caption="Engagements" columns={columns} rows={rows} rowKey={(row) => row.id} empty="None yet" />)

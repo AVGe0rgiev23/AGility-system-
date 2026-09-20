@@ -44,6 +44,8 @@ describe('Field', () => {
     )
     expect(html).toContain('<label for="f" class="sr-only">Pilot floor<span aria-hidden="true"> *</span></label>')
     expect(html).not.toContain('grid-cols')
+    // Positioned, so the hidden label stays inside a scrolling table instead of widening the page.
+    expect(html.startsWith('<div class="relative min-w-0">')).toBe(true)
     expect(html.indexOf('<input id="f"/>')).toBeLessThan(html.indexOf('id="f-description"'))
     expect(html).toContain('<li>Too high</li>')
   })

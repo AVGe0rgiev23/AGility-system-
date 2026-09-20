@@ -6,7 +6,7 @@ import { MemoryFolder } from '../storage/__fixtures__/memory-folder'
 import { plant } from '../storage/__fixtures__/raw-idb'
 import { FOLDER_HANDLE_KEY, type LoadResult } from '../storage/repository'
 import { engagementFolderName, type SyncStatus } from '../storage/sync'
-import { afterReload, bootStore, createStoreRuntime, prepareRestore, saveSettings, type StoreRuntime } from './use-store'
+import { afterReload, bootStore, createStoreRuntime, deleteAndReload, prepareRestore, saveAndReload, saveSettings, type StoreRuntime } from './use-store'
 
 const T1 = '2026-09-15T09:00:00.000Z'
 
@@ -201,5 +201,41 @@ describe('afterReload', () => {
     })
     const refusal: LoadResult = { status: 'refused', reason: 'database-unavailable', message: 'gone', issues: [] }
     expect(afterReload(refusal, { kind: 'unsupported' }, null)).toEqual({ phase: 'refused', refusal })
+  })
+})
+
+describe('saveAndReload and deleteAndReload', () => {
+  it('saves an engagement, bumping updatedAt, and reloads the store with it', async () => {
+    runtime = createStoreRuntime({ databaseName: 'engagement-save', clock: () => T1, appVersion: '0.1.0', pickFolder: undefined })
+    await runtime.boot()
+    const created = { ...newEngagement(), updatedAt: '2026-01-01T00:00:00.000Z' }
+    const load = await saveAndReload(runtime.repository, created)
+    if (load.status !== 'loaded') throw new Error('expected a loaded store')
+    expect(load.store.engagements).toEqual([{ ...created, updatedAt: T1 }])
+  })
+
+  it('refuses an engagement that breaks a capture rule and writes nothing', async () => {
+    runtime = createStoreRuntime({ databaseName: 'engagement-invalid', clock: () => T1, appVersion: '0.1.0', pickFolder: undefined })
+    await runtime.boot()
+    const broken = { ...newEngagement(), company: { ...newEngagement().company, name: ' ' } }
+    await expect(saveAndReload(runtime.repository, broken)).rejects.toThrow()
+    expect((await runtime.repository.readRawStore()).engagements).toEqual([])
+  })
+
+  it('deletes an engagement and reloads without it, leaving its folder on disk reported as stale', async () => {
+    const folder = new MemoryFolder('agility-os-data')
+    runtime = createStoreRuntime({ databaseName: 'engagement-delete', clock: () => T1, appVersion: '0.1.0', pickFolder: () => Promise.resolve(folder) })
+    await runtime.boot()
+    await runtime.sync.connect()
+    const kept = { ...newEngagement(), id: 'eng-kept' }
+    await saveAndReload(runtime.repository, newEngagement())
+    await saveAndReload(runtime.repository, kept)
+    const name = engagementFolderName(newEngagement().id, newEngagement().company.name)
+
+    const load = await deleteAndReload(runtime.repository, newEngagement().id)
+    if (load.status !== 'loaded') throw new Error('expected a loaded store')
+    expect(load.store.engagements.map((item) => item.id)).toEqual(['eng-kept'])
+    expect(folder.read(`engagements/${name}/engagement.json`)).toBeDefined()
+    expect(runtime.sync.status()).toMatchObject({ kind: 'connected', staleFolders: [name] })
   })
 })

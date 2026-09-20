@@ -1,11 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { CONFIG_RULE_BREAKS } from '../../../hooks/__fixtures__/config-rule-breaks'
+import { leafPaths } from '../../../hooks/form-paths'
 import {
   configFormView,
   formIssues,
   initialConfigForm,
-  leafPaths,
   locatedPaths,
   READ_ONLY_PATHS,
   setNumberText,
@@ -15,6 +15,7 @@ import {
 import { dotReadingWarning, NOT_A_NUMBER, VALUE_REQUIRED } from '../../../hooks/use-traced-draft'
 import { runCostLineItem, usageRunCostLineItem } from '../../../schema/__fixtures__/records'
 import { defaultConfig, type Config } from '../../../schema/config'
+import { describedBy, escapeHtml, renderedPaths, tagFor } from '../../__fixtures__/markup'
 import { ConfigSections } from './config-sections'
 
 function render(state: ConfigFormState): string {
@@ -29,30 +30,6 @@ function everyField(): Config {
   config.agency.vatId = 'BG123456789'
   config.runCostDefaults = [{ ...usageRunCostLineItem(), notes: 'Haiku, batched' }, { ...runCostLineItem(), notes: 'One machine' }]
   return config
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
-}
-
-function renderedPaths(html: string): string[] {
-  return [...html.matchAll(/data-config-path="([^"]*)"/g)].map((match) => match[1] ?? '')
-}
-
-// The opening tag of the element that carries the path.
-function tagFor(html: string, path: string): string {
-  const at = html.indexOf(`data-config-path="${path}"`)
-  if (at < 0) throw new Error(`nothing in the markup carries '${path}'`)
-  return html.slice(html.lastIndexOf('<', at), html.indexOf('>', at) + 1)
-}
-
-// What is written in the block the path's control is described by: its hint, warnings and issues.
-function describedBy(html: string, path: string): string {
-  const id = /aria-describedby="([^"]+)"/.exec(tagFor(html, path))?.[1]
-  if (id === undefined) throw new Error(`the element carrying '${path}' names no description`)
-  const start = html.indexOf(`id="${id}"`)
-  if (start < 0) throw new Error(`no element has the description id of '${path}'`)
-  return html.slice(start, html.indexOf('</div>', start))
 }
 
 describe('ConfigSections, every field', () => {

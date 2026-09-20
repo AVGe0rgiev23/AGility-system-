@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConfigSchema, type Config } from '../schema/config'
+import type { Engagement } from '../schema/engagement'
 import { createRepository, FOLDER_HANDLE_KEY, type LoadResult, type Repository } from '../storage/repository'
 import { createFolderSync, warningFor, type FolderHandle, type FolderSync, type SyncStatus } from '../storage/sync'
 import { applyImport, exportStore, prepareFolderRestore, prepareImportText, type ImportPreparation, type PreparedImport } from '../storage/transfer'
+import type { FormIssue } from './form-paths'
+import { buildNewEngagement, type NewEngagementDraft } from './use-engagement-list'
 
 export interface StoreRuntimeOptions {
   clock: () => string
@@ -102,7 +105,21 @@ export async function prepareRestore(
   return prepareFolderRestore(folder, repository, now)
 }
 
+// Saves an engagement edited or created on screen, then reloads, which recomputes its cached results.
+export async function saveAndReload(repository: Pick<Repository, 'saveEngagement' | 'load'>, engagement: Engagement): Promise<LoadResult> {
+  await repository.saveEngagement(engagement)
+  return repository.load()
+}
+
+// The engagement's folder, if one is connected, stays on disk and is reported as stale.
+export async function deleteAndReload(repository: Pick<Repository, 'deleteEngagement' | 'load'>, id: string): Promise<LoadResult> {
+  await repository.deleteEngagement(id)
+  return repository.load()
+}
+
 export type ActionResult = { ok: true } | { ok: false; message: string }
+
+export type CreateResult = { ok: true; id: string } | { ok: false; message: string; issues: FormIssue[] }
 
 export interface StoreHandle {
   state: StoreState
@@ -114,6 +131,10 @@ export interface StoreHandle {
   disconnect: () => Promise<void>
   syncNow: () => Promise<void>
   saveConfig: (config: Config) => Promise<ActionResult>
+  // Builds the engagement with a new id and the current time, saves it and reloads.
+  createEngagement: (draft: NewEngagementDraft) => Promise<CreateResult>
+  saveEngagement: (engagement: Engagement) => Promise<ActionResult>
+  deleteEngagement: (id: string) => Promise<ActionResult>
   exportStore: () => Promise<{ filename: string; text: string }>
   // Nothing is written by either; only applyImport writes, after the diff is confirmed.
   prepareImport: (text: string) => Promise<ImportPreparation>
@@ -179,6 +200,17 @@ export function useStore(runtime: StoreRuntime): StoreHandle {
   )
   const saveConfig = useCallback((config: Config) => reload(() => saveSettings(runtime.repository, config)), [reload, runtime])
   const applyPrepared = useCallback((prepared: PreparedImport) => reload(() => applyImport(prepared, runtime.repository)), [reload, runtime])
+  const saveEngagement = useCallback((engagement: Engagement) => reload(() => saveAndReload(runtime.repository, engagement)), [reload, runtime])
+  const deleteEngagement = useCallback((id: string) => reload(() => deleteAndReload(runtime.repository, id)), [reload, runtime])
+  const createEngagement = useCallback(
+    async (draft: NewEngagementDraft): Promise<CreateResult> => {
+      const built = buildNewEngagement(draft, crypto.randomUUID(), runtime.clock())
+      if (!built.ok) return { ok: false, message: 'The engagement was not created: fix the fields marked below.', issues: built.issues }
+      const result = await saveEngagement(built.engagement)
+      return result.ok ? { ok: true, id: built.engagement.id } : { ok: false, message: result.message, issues: [] }
+    },
+    [runtime, saveEngagement],
+  )
 
   return {
     state,
@@ -192,6 +224,9 @@ export function useStore(runtime: StoreRuntime): StoreHandle {
     prepareImport: (text: string) => prepareImportText(text, runtime.repository, runtime.clock()),
     prepareRestore: () => prepareRestore(runtime.pickFolder, runtime.repository, runtime.clock()),
     applyImport: applyPrepared,
+    createEngagement,
+    saveEngagement,
+    deleteEngagement,
     canPickFolder: runtime.pickFolder !== undefined,
   }
 }

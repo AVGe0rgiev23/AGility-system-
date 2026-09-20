@@ -2,13 +2,11 @@ import { useId, type ReactNode } from 'react'
 import { canConfirm, confirmationLabel, diffCounts, needsAcknowledgement, type TransferFlow, type TransferSource } from '../../../hooks/use-transfer-flow'
 import type { CollectionDiff, ImportRefusal, StoreDiff } from '../../../storage/transfer'
 import { Table } from '../../primitives/table'
-import { BUTTON } from './config-controls'
+import { BUTTON, PRIMARY } from '../form-controls'
 
 // Every step of an import or restore after it starts: what is being read, what would change, why it was
 // refused, and what happened. Nothing is written until the confirm button, and the button names what
 // it replaces.
-
-const PRIMARY = 'h-6 shrink-0 rounded-sm bg-accent px-2 text-sm text-fg transition-colors hover:bg-accent/80 disabled:bg-surface disabled:text-muted'
 
 export interface ImportDiffProps {
   flow: TransferFlow

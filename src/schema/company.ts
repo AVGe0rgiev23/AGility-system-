@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { CurrencySchema, TracedValueSchema } from './traced'
 
+// Client websites may still be plain http, unlike the agency's own, which must be https.
+const WebsiteSchema = z.url({ protocol: /^https?$/, hostname: z.regexes.domain })
+const EmailSchema = z.email()
+
 export const DeliveryModelSchema = z.enum(['fully-managed', 'client-owned', 'hybrid'])
 export type DeliveryModel = z.infer<typeof DeliveryModelSchema>
 
@@ -14,15 +18,26 @@ export const DetectedToolSchema = z.object({
 })
 export type DetectedTool = z.infer<typeof DetectedToolSchema>
 
-export const ContactSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  role: z.string().optional(),
-  email: z.string().optional(),
-  phone: z.string().optional(),
-  isDecisionMaker: z.boolean(),
-  notes: z.string().optional(),
-})
+export const ContactSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    role: z.string().optional(),
+    email: z.string().optional(),
+    phone: z.string().optional(),
+    isDecisionMaker: z.boolean(),
+    notes: z.string().optional(),
+  })
+  .superRefine((contact, ctx) => {
+    // A contact is picked by name everywhere it appears.
+    if (contact.name.trim() === '') {
+      ctx.addIssue({ code: 'custom', path: ['name'], message: 'A contact needs a name' })
+    }
+    // Absent means no address. An empty or malformed one would be written into a document as if real.
+    if (contact.email !== undefined && !EmailSchema.safeParse(contact.email).success) {
+      ctx.addIssue({ code: 'custom', path: ['email'], message: `'${contact.email}' is not a valid email address` })
+    }
+  })
 export type Contact = z.infer<typeof ContactSchema>
 
 export const TimestampedNoteSchema = z.object({
@@ -51,5 +66,19 @@ export const CompanySchema = z.object({
     securityNotes: z.string().optional(),
   }),
   preferredDeliveryModel: DeliveryModelSchema.optional(),
+}).superRefine((company, ctx) => {
+  // The list, the engagement's folder name and every proposal are headed by it.
+  if (company.name.trim() === '') {
+    ctx.addIssue({ code: 'custom', path: ['name'], message: 'The company needs a name' })
+  }
+  // Printed on documents. The URL parser trims whitespace, so a padded value would pass it yet print padded.
+  const { website } = company
+  if (website !== undefined && (website.trim() !== website || !WebsiteSchema.safeParse(website).success)) {
+    ctx.addIssue({ code: 'custom', path: ['website'], message: `'${website}' is not a valid http:// or https:// URL` })
+  }
+  const { employeeCount } = company
+  if (employeeCount !== undefined && (!Number.isInteger(employeeCount) || employeeCount < 0)) {
+    ctx.addIssue({ code: 'custom', path: ['employeeCount'], message: 'The employee count must be a whole number, at least 0' })
+  }
 })
 export type Company = z.infer<typeof CompanySchema>

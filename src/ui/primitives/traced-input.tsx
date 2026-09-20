@@ -10,7 +10,16 @@ type Measure = { unit: string; currency?: undefined; per?: undefined } | { curre
 // A required field can never be cleared to null, so its callback never receives one.
 type Requirement = { required: true; onChange: (next: TracedValue) => void } | { required?: false; onChange: (next: TracedValue | null) => void }
 
-export type TracedInputProps = { label: string; value: TracedValue | null; hint?: string } & Measure & Requirement
+export type TracedInputProps = {
+  label: string
+  value: TracedValue | null
+  hint?: string
+  // True while the text on screen is invalid and so has not reached onChange; see useTracedDraft.
+  onPendingChange?: (pending: boolean) => void
+  // Written on the value box as data-config-path, for a form that places issues by path.
+  path?: string
+} & Measure &
+  Requirement
 
 const CONTROL = 'h-6 rounded-sm border bg-bg px-1.5 text-sm text-fg'
 
@@ -34,6 +43,7 @@ export function TracedInput(props: TracedInputProps) {
     field,
     required,
     onChange: emit,
+    onPendingChange: props.onPendingChange,
   })
   const invalid = issues.length > 0
 
@@ -48,6 +58,7 @@ export function TracedInput(props: TracedInputProps) {
       <div className="flex min-w-0 items-center gap-1.5" onBlur={leaveRow}>
         <input
           id={valueId}
+          data-config-path={props.path}
           type="text"
           inputMode="decimal"
           autoComplete="off"

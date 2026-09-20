@@ -4,7 +4,7 @@ import { DeliveryModelSchema } from '../../../schema/company'
 import { RunCostLineItemSchema, type RunCostLineItem } from '../../../schema/run-cost'
 import { fieldDescriptionId } from '../../primitives/field'
 import { Table } from '../../primitives/table'
-import { BUTTON, ChoiceField, ConfigList, FlagField, NumberField, RowActions, TextField } from './config-controls'
+import { BUTTON, ChoiceField, FlagField, FormList, NumberField, RowActions, TextField } from '../form-controls'
 
 // One record across three tables, each row led by the item's name: the item itself, who pays for it
 // under each delivery model, and the usage formula of each usage-based item. One table with every
@@ -64,7 +64,7 @@ export function RunCostDefaultsEditor({ form, items }: { form: ConfigFormView; i
   const at = (index: number, key: string) => `runCostDefaults.${index}.${key}`
 
   return (
-    <ConfigList
+    <FormList
       form={form}
       path="runCostDefaults"
       title="Run-cost defaults"
@@ -153,6 +153,6 @@ export function RunCostDefaultsEditor({ form, items }: { form: ConfigFormView; i
           />
         </div>
       )}
-    </ConfigList>
+    </FormList>
   )
 }

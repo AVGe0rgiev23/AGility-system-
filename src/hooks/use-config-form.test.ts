@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { runCostLineItem, usageRunCostLineItem } from '../schema/__fixtures__/records'
 import { defaultConfig, type Config } from '../schema/config'
 import { CONFIG_RULE_BREAKS } from './__fixtures__/config-rule-breaks'
+import { issuesByPath, leafPaths } from './form-paths'
 import {
   addBand,
   addIndustry,
@@ -12,8 +13,6 @@ import {
   hasChanges,
   hasUnsavedEdits,
   initialConfigForm,
-  issuesByPath,
-  leafPaths,
   locatedPaths,
   moveBand,
   moveIndustry,

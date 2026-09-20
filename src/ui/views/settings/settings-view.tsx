@@ -5,14 +5,12 @@ import { useTransferFlow } from '../../../hooks/use-transfer-flow'
 import type { StoreProblem } from '../../../storage/repository'
 import { saveJsonFile } from '../../save-file'
 import { Table } from '../../primitives/table'
-import { BUTTON, SettingsSection } from './config-controls'
+import { BUTTON, FormSection, OtherProblems, SaveBar } from '../form-controls'
 import { ConfigSections } from './config-sections'
 import { FolderPanel, type FolderAction, type FolderPanelProps } from './folder-panel'
 import { StorePanel, type StorePanelProps } from './store-panel'
 
 type LoadedStore = Extract<BootedStore, { phase: 'loaded' }>
-
-const PRIMARY = 'h-6 shrink-0 rounded-sm bg-accent px-2 text-sm text-fg transition-colors hover:bg-accent/80 disabled:bg-surface disabled:text-muted'
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -29,36 +27,13 @@ export interface SettingsScreenProps {
   store: Omit<StorePanelProps, 'unsavedSettings'>
 }
 
-function saveStatus(form: ConfigFormView, saving: boolean): { text: string; tone: string } {
-  if (saving) return { text: 'Saving…', tone: 'text-muted' }
-  if (!form.changed) return { text: 'No unsaved changes', tone: 'text-muted' }
-  const count = form.issues.length
-  if (count > 0) return { text: `Unsaved changes: ${count} ${count === 1 ? 'problem' : 'problems'} to fix before saving`, tone: 'text-danger' }
-  return { text: 'Unsaved changes', tone: 'text-warn' }
-}
-
 // The screen, given everything it shows. SettingsView holds the state; this only renders it.
 export function SettingsScreen({ form, configProblems, saving, saveError, onSave, folder, store }: SettingsScreenProps) {
-  const status = saveStatus(form, saving)
   const issues = configProblems.flatMap((problem) => problem.issues).map((issue, index) => ({ issue, index }))
 
   return (
     <section aria-labelledby="page-heading">
-      {/* Kept in view while scrolling, since Save is the one action every edit below leads to. */}
-      <header className="sticky top-0 z-10 flex h-10 items-center gap-3 border-b bg-bg px-4">
-        <h1 id="page-heading" className="text-base font-medium">
-          Settings
-        </h1>
-        <span role="status" className={`ml-auto text-sm ${status.tone}`}>
-          {status.text}
-        </span>
-        <button type="button" className={BUTTON} disabled={!form.changed || saving} onClick={form.discard}>
-          Discard changes
-        </button>
-        <button type="button" className={PRIMARY} disabled={!form.canSave || saving} onClick={onSave}>
-          Save
-        </button>
-      </header>
+      <SaveBar title="Settings" changed={form.changed} problems={form.issues.length} canSave={form.canSave} saving={saving} onSave={onSave} onDiscard={form.discard} />
 
       {saveError === null ? null : (
         <p role="alert" className="border-b px-4 py-2 text-sm text-danger">
@@ -66,24 +41,10 @@ export function SettingsScreen({ form, configProblems, saving, saveError, onSave
         </p>
       )}
 
-      {form.otherProblems.length === 0 ? null : (
-        <section aria-labelledby="settings-other-problems" className="border-b px-4 py-3">
-          <h2 id="settings-other-problems" className="pb-1 text-sm font-medium text-danger">
-            Other problems
-          </h2>
-          <p className="pb-1 text-xs text-muted">These block saving and have no field of their own on this screen.</p>
-          <ul role="alert" className="text-sm">
-            {form.otherProblems.map((problem) => (
-              <li key={`${problem.path}-${problem.message}`}>
-                <span className="num">{problem.path === '' ? '(root)' : problem.path}</span>: {problem.message}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <OtherProblems problems={form.otherProblems} />
 
       {form.draft === null ? (
-        <SettingsSection id="settings-unusable" title="The stored Config is unusable">
+        <FormSection id="settings-unusable" title="The stored Config is unusable">
           {configProblems.map((problem) => (
             <p key={problem.key} className="pb-1 text-sm">
               {problem.message}
@@ -109,7 +70,7 @@ export function SettingsScreen({ form, configProblems, saving, saveError, onSave
               Fills this form with the seed defaults. Nothing is written until Save. Importing or restoring a store also brings a Config back.
             </span>
           </div>
-        </SettingsSection>
+        </FormSection>
       ) : (
         <ConfigSections form={form} draft={form.draft} />
       )}

@@ -59,7 +59,7 @@ src/
   storage/      db.ts, repository.ts, derived.ts, sync.ts, transfer.ts
   engines/      scoring, roi, estimate, run-cost, calibration, signals
   render/       view-model, resolve, template, overrides, nodes; print layout (Stage 3)
-  hooks/        useStore, useTracedDraft, useConfigForm, useTransferFlow; useEngagement, useLibrary, useConfig, useDerived
+  hooks/        useStore, useTracedDraft, useConfigForm, useTransferFlow, useEngagementForm; useEngagement, useLibrary, useConfig, useDerived
   ui/           shell/, primitives/, views/
   app.tsx
 ```
@@ -297,6 +297,25 @@ element's title.
   the draft does not stand for, so an echoed value keeps the typed text and an
   invalid draft is never overwritten. The parent must apply `onChange` before the
   next keystroke, as synchronous React state does.
+- **A pending draft is reported.** After every edit, `onPendingChange` says
+  whether the text on screen is invalid and so has not reached the parent, which
+  still holds the last valid value. A form with a Save button blocks saving while
+  any traced field is pending, so it never stores a figure other than the one on
+  screen.
+
+**Tables sort** when the screen passes a sort state and `onSort`. A sortable
+column gives a `sortValue`; its header becomes a button and carries `aria-sort`.
+Sorting is pure (`ui/table-sort.ts`): missing values sort last in either
+direction, text sorts by `en-GB` collation ignoring case and reading digits as
+numbers, and equal rows keep their order. The screen owns the state, so its
+choice can outlive the table.
+
+**Path-addressed forms.** Settings and the engagement detail edit a record by
+path. They share the path helpers (`hooks/form-paths.ts`) and the controls and
+save bar (`ui/views/form-controls.tsx`), which read a small `PathForm` interface.
+A table cell's control keeps its label for screen readers only, inside a
+positioned wrapper, so a hidden label cannot escape a horizontally scrolling table
+and widen the page.
 
 **Settings** edits every Config field on one screen (`ui/views/settings/`). Its
 rules live in `hooks/use-config-form.ts` as pure functions; the rules about the
@@ -363,6 +382,72 @@ data stay in `ConfigSchema`, and the screen only places their messages.
 - **The store panel** shows the stored and supported schema versions, the running
   app version and the one that created or last migrated the store, and the
   store's times. Export downloads every stored record through a Blob URL.
+
+**The engagement list** (`ui/views/engagements/`) is a sortable table of every
+engagement that loaded, with its rules in `hooks/use-engagement-list.ts`.
+
+- **Columns:** company (linking to the detail), stage, source, industry, tags,
+  next action, due date and last update, shown as the local date. Stage sorts in
+  pipeline order. The default sort is newest update first.
+- **Filters:** stage, a tag in use, and next action (any, has one, has none, or
+  due today or earlier). Today is the local calendar date, so "due today" does
+  not flip over at midnight UTC; the schema holds due dates to `YYYY-MM-DD`, so
+  they compare as strings. A due date of today or earlier shows in the warn
+  colour.
+- **Filters and sort are held by `App`**, so they survive opening an engagement
+  and coming back. They are not in the address.
+- **New engagement** is an inline panel: company name, industry, currency, source
+  and stage.
+  - Currency starts as EUR and stage as LEAD, both visible. Source has no default
+    and is refused until chosen.
+  - Industry is picked from `Config.industries`, or typed when the stored Config
+    is unusable, and may be left empty, as the schema allows.
+  - Issues show under each field once creating has been tried. Creating gives the
+    engagement a UUID and the current time, starts its stage history at the chosen
+    stage, saves, reloads, and opens it.
+
+**The engagement detail** opens at `#/engagements/<id>/<tab>`, overview by
+default. Its editing model is `hooks/use-engagement-form.ts`.
+
+- **Every section of the record has a tab**, each with its own address. A section
+  not built yet names the task that builds it. An unknown section offers the
+  overview. An unknown id says whether the engagement does not exist or is stored
+  but was left out for not validating.
+- **One draft per engagement** covers the slices this screen edits: company,
+  contacts, source, tags and next action.
+  - Nothing else from the record is copied into the draft. Save writes the latest
+    loaded engagement with the draft on top, then reloads, which recomputes its
+    caches, so a stale copy of the rest can never be written back.
+  - The draft is replaced only when the stored slices change from what it started
+    from. A reload that only recomputes cached results keeps the edit.
+  - The draft survives switching tabs and is lost on leaving; there is no
+    navigation guard. A tab with problems shows their count.
+  - Discard and a reset advance a generation that keys the tab content, so every
+    control remounts. Otherwise a TracedInput holding invalid text would keep
+    showing it over the value it was reset to.
+- **Issues are placed by path**, exactly as in Settings, against the engagement's
+  own paths (`company.name`, `contacts.0.email`). The capture rules are
+  `EngagementSchema`'s (DATA-MODEL, Company, Validation). Each tab's render test
+  holds it to exactly the paths the form model places issues at.
+- **Fields:**
+  - Clearing an optional text or choice removes its key, since absent is the
+    empty value.
+  - The employee count is a plain `NumberInput`: DATA-MODEL types it `number`,
+    and it feeds no client-facing figure. The blended hourly cost is a
+    `TracedInput`, and its pending text blocks Save.
+  - A next action exists while it has text or a due date; clearing both makes it
+    `null`.
+  - New tags, stated tools, compliance entries and contacts start blank. The
+    schema refuses a blank tag or contact name.
+- **Overview:** source, next action and tags are edited here. Stage, created and
+  updated times, the id and the stage history are shown. The stage is chosen at
+  creation and moves with the pipeline view (Stage 1, task 4).
+- **Company:** every Company field. The detected stack is shown read-only, since
+  signal extraction fills and confirms it (Stage 1, task 10).
+- **Contacts:** one table, with add and remove. A removal takes effect on Save, so
+  Discard brings a contact back.
+- **Deleting** asks first, naming the company and saying that a connected folder
+  keeps its copy, listed as stale. It then returns to the list.
 
 ## Security model
 

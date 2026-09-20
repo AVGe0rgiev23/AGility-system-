@@ -312,6 +312,18 @@ describe('receiveValue and editDraft', () => {
     for (const result of [blank, prefilled, prefilledLarge]) expect(result.emit).toEqual({ value: 1.2, unit: 'minutes', source: 'measured' })
   })
 
+  it('reports the draft pending exactly while it is invalid, so a form never saves a value other than the one on screen', () => {
+    const initial = initialDraftState(stored, MINUTES)
+    expect(editDraft(initial, { text: 'abc' }, MINUTES, stored, true).pending).toBe(true)
+    expect(editDraft(initial, { text: '' }, MINUTES, stored, true).pending).toBe(true)
+    expect(editDraft(initialDraftState(null, MINUTES), { text: '5' }, MINUTES, null, true).pending).toBe(true)
+    expect(editDraft(initial, { text: '15' }, MINUTES, stored, true).pending).toBe(false)
+    expect(editDraft(initial, { text: '12' }, MINUTES, stored, true).pending).toBe(false)
+    expect(editDraft(initial, { text: '' }, MINUTES, stored, false).pending).toBe(false)
+    const invalid = editDraft(initial, { text: 'abc' }, MINUTES, stored, true)
+    expect(editDraft(invalid.state, { text: '14' }, MINUTES, stored, true).pending).toBe(false)
+  })
+
   it('emits nothing when the edit stands for the value the parent already holds', () => {
     expect(editDraft(initialDraftState(stored, MINUTES), { text: '12,0' }, MINUTES, stored, true).emit).toBeUndefined()
   })

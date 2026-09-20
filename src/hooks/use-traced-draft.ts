@@ -177,19 +177,20 @@ export function receiveValue(state: DraftState, value: TracedValue | null, field
 }
 
 // `emit` is what to hand to onChange: a value, null for a cleared optional field, or undefined when
-// the draft is invalid or stands for what the parent already holds.
+// the draft is invalid or stands for what the parent already holds. `pending` is true while the draft
+// is invalid: what is on screen has not reached the parent, which holds the last value that was valid.
 export function editDraft(
   state: DraftState,
   patch: Partial<TracedDraft>,
   field: TracedField,
   value: TracedValue | null,
   required: boolean,
-): { state: DraftState; emit: TracedValue | null | undefined } {
+): { state: DraftState; emit: TracedValue | null | undefined; pending: boolean } {
   const draft = { ...state.draft, ...patch }
   const assembled = assembleDraft(draft, field, value, required)
-  if (assembled.kind === 'invalid') return { state: { ...state, draft }, emit: undefined }
+  if (assembled.kind === 'invalid') return { state: { ...state, draft }, emit: undefined, pending: true }
   const next = assembled.kind === 'value' ? assembled.value : null
-  return { state: { ...state, draft, represented: next }, emit: sameTraced(next, value) ? undefined : next }
+  return { state: { ...state, draft, represented: next }, emit: sameTraced(next, value) ? undefined : next, pending: false }
 }
 
 export interface TracedDraftOptions {
@@ -197,9 +198,13 @@ export interface TracedDraftOptions {
   field: TracedField
   required: boolean
   onChange: (next: TracedValue | null) => void
+  // Told after every edit whether the draft is invalid, so a form with a Save button can refuse to save
+  // a value other than the one on screen. Not told when the parent replaces the draft with a new value,
+  // which the parent already knows about.
+  onPendingChange?: (pending: boolean) => void
 }
 
-export function useTracedDraft({ value, field, required, onChange }: TracedDraftOptions) {
+export function useTracedDraft({ value, field, required, onChange, onPendingChange }: TracedDraftOptions) {
   const [stored, setStored] = useState(() => initialDraftState(value, field))
   const state = receiveValue(stored, value, field)
   if (state !== stored) setStored(state)
@@ -208,6 +213,7 @@ export function useTracedDraft({ value, field, required, onChange }: TracedDraft
     const result = editDraft(state, patch, field, value, required)
     setStored(result.state)
     if (result.emit !== undefined) onChange(result.emit)
+    onPendingChange?.(result.pending)
   }
 
   const assembled = assembleDraft(state.draft, field, value, required)

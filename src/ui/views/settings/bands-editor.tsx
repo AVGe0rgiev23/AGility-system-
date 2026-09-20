@@ -1,7 +1,7 @@
 import type { ConfigFormView } from '../../../hooks/use-config-form'
 import type { Config } from '../../../schema/config'
 import { Table } from '../../primitives/table'
-import { ConfigList, NumberField, RowActions, TextField } from './config-controls'
+import { FormList, NumberField, RowActions, TextField } from '../form-controls'
 
 type Band = Config['pricing']['bands'][number]
 
@@ -13,7 +13,7 @@ export function BandsEditor({ form, bands }: { form: ConfigFormView; bands: read
   const rows = bands.map((band, index) => ({ band, index }))
   const at = (index: number, key: keyof Band) => `pricing.bands.${index}.${key}`
   return (
-    <ConfigList
+    <FormList
       form={form}
       path="pricing.bands"
       title="Pricing bands"
@@ -61,6 +61,6 @@ export function BandsEditor({ form, bands }: { form: ConfigFormView; bands: read
           empty="No bands. Estimation needs at least the unbounded custom band."
         />
       </div>
-    </ConfigList>
+    </FormList>
   )
 }

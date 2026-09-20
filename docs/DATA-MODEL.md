@@ -182,6 +182,40 @@ interface TimestampedNote {
 }
 ```
 
+### Validation
+
+`CompanySchema`, `ContactSchema` and `EngagementSchema` enforce these rules on top
+of the types above. They live in the schema because import, folder restore and
+migration never pass through the forms. An absent optional field is the empty
+value, so an empty string where a well-formed value is required is refused like
+any other malformed one. Within an engagement each path is prefixed, as in
+`company.name` or `contacts.0.email`.
+
+| Rule | Issue path |
+|---|---|
+| The company name is not blank | `name` |
+| `website`, when present, is an `http://` or `https://` URL with a domain host and no leading or trailing whitespace | `website` |
+| `employeeCount`, when present, is a whole number, at least 0 | `employeeCount` |
+| A contact's name is not blank | `name` |
+| A contact's `email`, when present, is a valid email address | `email` |
+| Each tag is not blank | `tags.<i>` |
+| No tag appears twice | `tags.<i>`, on the later one |
+| `nextAction.text` is not blank | `nextAction.text` |
+| `nextAction.due`, when present, is a real calendar date written `YYYY-MM-DD` | `nextAction.due` |
+
+Why:
+
+- **A name on every company and contact.** The engagement list, the engagement's
+  folder name and every document are headed by the company name, and a contact is
+  picked by name.
+- **Well-formed website and email.** Both are printed into documents, where a
+  malformed one would look real.
+- **Client websites may be plain http**, unlike the agency's own, which must be
+  https.
+- **Real due dates.** The engagement list filters next actions due by today by
+  comparing `YYYY-MM-DD` strings, which only works for real dates in that form.
+- **Distinct, non-blank tags.** The list filters by tag.
+
 ## Discovery
 
 Answers are typed fields, never prose blobs. This is what makes the data
@@ -791,6 +825,10 @@ Version 5 (`v4-to-v5.ts`) only advances the version. It makes a run-cost item's
 in `Config.runCostDefaults` and `scope.runCostItems` alike. Every v4 item carries
 a number, which stays valid. A usage-based v4 item keeps the number v4 made it
 carry, since removing it would be a repair.
+Version 6 (`v5-to-v6.ts`) only advances the version. It adds the engagement
+capture rules (Company, Validation); a v5 record that breaks one stays as stored
+and fails with its issue path, because guessing a name or dropping a malformed
+address would change what was entered.
 `runMigrations` never writes. Storage writes the result back atomically and
 stamps `Meta.lastMigratedAt` only once it returns. An optional third argument,
 `{ migrations, current }`, exists so tests can exercise the step loop with a

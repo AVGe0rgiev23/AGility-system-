@@ -50,7 +50,9 @@ export function Field({ label, htmlFor, hint, warnings = [], issues = [], requir
 
   if (layout === 'cell') {
     return (
-      <div className="min-w-0">
+      // Relative, so the visually hidden label is positioned inside the cell: otherwise it escapes a
+      // horizontally scrolling table and widens the whole page.
+      <div className="relative min-w-0">
         <label htmlFor={htmlFor} className="sr-only">
           {labelText}
         </label>
