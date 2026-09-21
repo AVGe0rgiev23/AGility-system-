@@ -2,6 +2,7 @@ import { useId, type ReactNode } from 'react'
 import { formatNumber } from '../format'
 import { Field, fieldDescriptionId } from '../primitives/field'
 import { NumberInput } from '../primitives/number-input'
+import { Table } from '../primitives/table'
 
 // The controls every path-addressed form is built from: Settings and the engagement detail. Each
 // writes its path as data-config-path and points aria-describedby at the block its issues are written
@@ -246,6 +247,47 @@ export function RowActions({ name, index, count, onMove, onRemove }: { name: str
         Remove
       </button>
     </span>
+  )
+}
+
+// A list of typed-in text entries, one control per row, with add and remove. A removal takes effect on
+// Save like any other edit. Generic in the path, so a form offers exactly the lists it can edit.
+export function StringListEditor<P extends string>({
+  form,
+  path,
+  title,
+  itemLabel,
+  hint,
+  addLabel,
+}: {
+  form: PathForm & { addToList: (path: P) => void; removeFromList: (path: P, index: number) => void }
+  path: P
+  title: string
+  itemLabel: string
+  hint: string
+  addLabel: string
+}) {
+  const list = form.valueAt(path)
+  const rows = (Array.isArray(list) ? (list as unknown[]) : []).map((item, index) => ({ item: typeof item === 'string' ? item : '', index }))
+  return (
+    <FormList form={form} path={path} title={title} hint={hint} addLabel={addLabel} onAdd={() => form.addToList(path)}>
+      <Table
+        caption={title}
+        columns={[
+          { id: 'item', header: itemLabel, cell: ({ index }) => <TextField form={form} path={`${path}.${index}`} label={`${itemLabel} ${index + 1}`} layout="cell" width="w-56" /> },
+          {
+            id: 'actions',
+            header: '',
+            cell: ({ item, index }) => (
+              <RowActions name={item === '' ? `${itemLabel.toLowerCase()} ${index + 1}` : `'${item}'`} index={index} count={rows.length} onRemove={() => form.removeFromList(path, index)} />
+            ),
+          },
+        ]}
+        rows={rows}
+        rowKey={({ index }) => String(index)}
+        empty={`No ${title.toLowerCase()}`}
+      />
+    </FormList>
   )
 }
 

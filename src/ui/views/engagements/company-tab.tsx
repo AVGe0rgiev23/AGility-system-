@@ -5,34 +5,7 @@ import { CurrencySchema } from '../../../schema/traced'
 import { fieldDescriptionId } from '../../primitives/field'
 import { Table } from '../../primitives/table'
 import { TracedInput } from '../../primitives/traced-input'
-import { ChoiceField, FormList, FormSection, NumberField, RowActions, TextField } from '../form-controls'
-
-type StringList = 'company.statedTools' | 'company.constraints.compliance'
-
-function StringListEditor({ form, path, title, itemLabel, hint, addLabel }: { form: EngagementFormView; path: StringList; title: string; itemLabel: string; hint: string; addLabel: string }) {
-  const list = form.valueAt(path)
-  const rows = (Array.isArray(list) ? (list as unknown[]) : []).map((item, index) => ({ item: typeof item === 'string' ? item : '', index }))
-  return (
-    <FormList form={form} path={path} title={title} hint={hint} addLabel={addLabel} onAdd={() => form.addToList(path)}>
-      <Table
-        caption={title}
-        columns={[
-          { id: 'item', header: itemLabel, cell: ({ index }) => <TextField form={form} path={`${path}.${index}`} label={`${itemLabel} ${index + 1}`} layout="cell" width="w-56" /> },
-          {
-            id: 'actions',
-            header: '',
-            cell: ({ item, index }) => (
-              <RowActions name={item === '' ? `${itemLabel.toLowerCase()} ${index + 1}` : `'${item}'`} index={index} count={rows.length} onRemove={() => form.removeFromList(path, index)} />
-            ),
-          },
-        ]}
-        rows={rows}
-        rowKey={({ index }) => String(index)}
-        empty={`No ${title.toLowerCase()}`}
-      />
-    </FormList>
-  )
-}
+import { ChoiceField, FormSection, NumberField, StringListEditor, TextField } from '../form-controls'
 
 // Shown, not edited here: signal extraction fills it and confirms each tool.
 function DetectedStack({ form }: { form: EngagementFormView }) {
