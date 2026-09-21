@@ -12,6 +12,21 @@ describe('ProcessStepSchema', () => {
     const { isManual: _a, isBottleneck: _b, ...noFlags } = processStep()
     expect(issuePaths(ProcessStepSchema, noFlags)).toEqual(['isManual', 'isBottleneck'])
   })
+
+  it('requires an action that is not blank, since a step is read by what it does', () => {
+    expect(issuePaths(ProcessStepSchema, { ...processStep(), action: '  ' })).toEqual(['action'])
+  })
+
+  it('refuses a blank system, since absent is the empty value', () => {
+    expect(issuePaths(ProcessStepSchema, { ...processStep(), system: ' ' })).toEqual(['system'])
+    const { system: _omitted, ...noSystem } = processStep()
+    expect(issuePaths(ProcessStepSchema, noSystem)).toEqual([])
+  })
+
+  it('accepts a wait time of zero but never a negative one', () => {
+    expect(issuePaths(ProcessStepSchema, { ...processStep(), waitTimeMinutes: 0 })).toEqual([])
+    expect(issuePaths(ProcessStepSchema, { ...processStep(), waitTimeMinutes: -1 })).toEqual(['waitTimeMinutes'])
+  })
 })
 
 describe('ProcessSchema', () => {
@@ -45,6 +60,30 @@ describe('ProcessSchema', () => {
     expect(issuePaths(ProcessSchema, { ...businessProcess(), revenueImpact: 'high' })).toEqual([
       'revenueImpact',
     ])
+  })
+
+  it('requires a name that is not blank, since every table and document names the process', () => {
+    expect(issuePaths(ProcessSchema, { ...businessProcess(), name: ' ' })).toEqual(['name'])
+  })
+
+  it('reports a step rule at the step it belongs to', () => {
+    const input = businessProcess()
+    const steps = [processStep(), { ...processStep(), id: 'step-2', action: '' }]
+    expect(issuePaths(ProcessSchema, { ...input, steps })).toEqual(['steps.1.action'])
+  })
+
+  it('refuses a blank or repeated system and pain point, at the later entry', () => {
+    const base = businessProcess()
+    expect(issuePaths(ProcessSchema, { ...base, systemsTouched: ['Gmail', ' ', 'Gmail'] })).toEqual(['systemsTouched.1', 'systemsTouched.2'])
+    expect(issuePaths(ProcessSchema, { ...base, painPoints: ['Retyping', '', 'Retyping'] })).toEqual(['painPoints.1', 'painPoints.2'])
+    expect(ProcessSchema.safeParse({ ...base, systemsTouched: ['Gmail', 'Gmail'] }).error?.issues[0]?.message).toBe("The system 'Gmail' is already listed")
+  })
+
+  it('holds an error rate to a share of the runs, since scoring reads it as a percentage', () => {
+    const input = businessProcess()
+    const rated = (value: number) => ({ ...input, errorProfile: { ...input.errorProfile, errorRatePercent: { value, unit: 'percent', source: 'estimated' } } })
+    expect(issuePaths(ProcessSchema, rated(100))).toEqual([])
+    expect(issuePaths(ProcessSchema, rated(101))).toEqual(['errorProfile.errorRatePercent.value'])
   })
 
   it('survives a JSON round trip unchanged', () => {

@@ -192,11 +192,15 @@ export const PATTERN_IDS = ['pat-a', 'pat-b', 'pat-c'] as const
 // A scored opportunity as the estimate and ROI engines receive it. Raw hours are 0 one time
 // in ten so the empty-scope path is exercised.
 export function randomScored(random: Random, index: number): ScoredOpportunity {
+  // The primary pattern is one of the linked ones, as the schema requires, so a generated opportunity
+  // is one that could have been stored.
+  const primaryPatternId = random() < 0.2 ? null : pick(random, PATTERN_IDS)
   return {
     opportunity: {
       ...opportunity(),
       id: `opp-${index}`,
-      primaryPatternId: random() < 0.2 ? null : pick(random, PATTERN_IDS),
+      patternIds: primaryPatternId === null ? [] : [primaryPatternId],
+      primaryPatternId,
     },
     scoring: {
       ...scoringResult(),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import storeV6 from '../__fixtures__/store-v6.json'
 import { WholeStoreSchema } from '../store'
+import { CURRENT_SCHEMA_VERSION } from '../version'
 import { MigrationError, runMigrations } from './run-migrations'
 import { migrateV6ToV7 } from './v6-to-v7'
 
@@ -42,11 +43,14 @@ describe('migrateV6ToV7', () => {
     expect(migrateV6ToV7(v6Store())).toEqual(expectedV7())
   })
 
-  it('migrates the v6 fixture to a store that validates at version 7, changing nothing Zod would add or strip', () => {
+  it('migrates the v6 fixture through the whole chain to a store that validates, changing nothing Zod would add or strip', () => {
     const migrated = runMigrations(v6Store(), 6)
     expect(WholeStoreSchema.safeParse(migrated).success).toBe(true)
-    expect(migrated.meta.schemaVersion).toBe(7)
-    expect(migrated).toEqual(expectedV7())
+    expect(migrated.meta.schemaVersion).toBe(CURRENT_SCHEMA_VERSION)
+    // Later steps add only what they document; nothing else about the v6 data changes.
+    const expected = expectedV7()
+    at(expected, 'meta').schemaVersion = CURRENT_SCHEMA_VERSION
+    expect(migrated).toEqual(expected)
   })
 
   it('keeps the fixture question whose condition names a question outside its set, which fails safe', () => {
