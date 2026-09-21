@@ -35,8 +35,10 @@ export const ENGAGEMENT_TABS: readonly TabDefinition[] = [
   { id: 'notes', label: 'Notes', placeholder: 'Editing engagement notes is not yet in BUILD-PLAN.' },
 ]
 
+// Every tab whose issues the form model counts. A tab left out here would show no count at all rather
+// than a wrong one, so it is listed against the record the form holds.
 function isFormTab(id: string): id is EngagementTab {
-  return id === 'overview' || id === 'company' || id === 'contacts' || id === 'discovery'
+  return id === 'overview' || id === 'company' || id === 'contacts' || id === 'discovery' || id === 'processes' || id === 'opportunities'
 }
 
 export interface EngagementScreenProps {

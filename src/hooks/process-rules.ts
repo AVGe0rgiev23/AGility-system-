@@ -250,7 +250,9 @@ export function opportunityFromDraft(id: string, draft: NewOpportunityDraft): Op
 
 // References the schema leaves to the engines, which raise MISSING_PROCESS and score no value for one.
 // The editor refuses them, so none is ever written from the app.
-export function referenceIssues(processes: readonly Process[], opportunities: readonly Opportunity[]): FormIssue[] {
+// Takes only what it reads, so the engagement form can pass the opportunities it holds without their
+// cached score.
+export function referenceIssues(processes: readonly Pick<Process, 'id'>[], opportunities: readonly Pick<Opportunity, 'processIds'>[]): FormIssue[] {
   const ids = new Set(processes.map((process) => process.id))
   return opportunities.flatMap((opportunity, index) => {
     const path = `opportunities.${index}.processIds`
@@ -261,12 +263,12 @@ export function referenceIssues(processes: readonly Process[], opportunities: re
   })
 }
 
-export function processUsage(processId: string, opportunities: readonly Opportunity[]): Opportunity[] {
+export function processUsage<T extends Pick<Opportunity, 'processIds'>>(processId: string, opportunities: readonly T[]): T[] {
   return opportunities.filter((opportunity) => opportunity.processIds.includes(processId))
 }
 
 // Why a record cannot be removed yet, in the words the row shows, or null when it can.
-export function processRemovalBlock(processId: string, opportunities: readonly Opportunity[]): string | null {
+export function processRemovalBlock(processId: string, opportunities: readonly Pick<Opportunity, 'processIds'>[]): string | null {
   const used = processUsage(processId, opportunities).length
   if (used === 0) return null
   return `${String(used)} ${used === 1 ? 'opportunity is' : 'opportunities are'} about this process`
