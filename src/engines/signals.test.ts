@@ -231,6 +231,7 @@ describe('evidenceFrom', () => {
 
 describe('mergeDetectedTools', () => {
   const found = () => extractSignals(TOOL_EXAMPLES.HubSpot ?? '').tools
+  const detectedFixture = () => ({ name: 'HubSpot', category: 'crm', evidence: 'x', confidence: 'high' as const, confirmed: false })
 
   it('adds what the stack does not hold', () => {
     expect(mergeDetectedTools([], found()).map((tool) => tool.name)).toEqual(['HubSpot'])
@@ -240,6 +241,16 @@ describe('mergeDetectedTools', () => {
     const confirmed = { ...(found()[0] ?? { name: 'HubSpot', category: 'crm', evidence: 'x', confidence: 'high' as const }), evidence: 'said on the call', confirmed: true }
     const merged = mergeDetectedTools([confirmed], found())
     expect(merged).toEqual([confirmed])
+  })
+
+  it('adds a name once even when the found list repeats it, keeping the first, since the schema refuses a repeat', () => {
+    const first = { ...(found()[0] ?? detectedFixture()), evidence: 'the first match' }
+    const second = { ...first, evidence: 'the second match' }
+    const merged = mergeDetectedTools([], [first, second])
+    expect(merged).toEqual([first])
+    // A repeat within the batch is dropped whether or not the stack already held other entries.
+    const other = { ...first, name: 'Xero' }
+    expect(mergeDetectedTools([other], [first, second]).map((tool) => tool.name)).toEqual(['Xero', 'HubSpot'])
   })
 
   it('returns the same array when nothing is new, so a re-run leaves the record untouched', () => {

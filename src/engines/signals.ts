@@ -67,10 +67,17 @@ export function extractSignals(text: string): ExtractedSignals {
 
 // Adds what the stack does not already hold, keyed on the name exactly as the schema's uniqueness rule
 // is. An entry already there is never touched, so re-running extraction cannot un-confirm a tool Alex
-// confirmed or overwrite the evidence he confirmed it on. Returns the same array when nothing is new,
-// so a re-run that finds nothing leaves the record untouched.
+// confirmed or overwrite the evidence he confirmed it on. A name repeated within `found` is added once,
+// the first kept: extractSignals never repeats one, but the schema refuses a repeat, so this does not
+// lean on its caller. Returns the same array when nothing is new, so a re-run that finds nothing leaves
+// the record untouched.
 export function mergeDetectedTools(existing: DetectedTool[], found: readonly DetectedTool[]): DetectedTool[] {
   const known = new Set(existing.map((tool) => tool.name))
-  const added = found.filter((tool) => !known.has(tool.name))
+  const added: DetectedTool[] = []
+  for (const tool of found) {
+    if (known.has(tool.name)) continue
+    known.add(tool.name)
+    added.push(tool)
+  }
   return added.length === 0 ? existing : [...existing, ...added]
 }
