@@ -59,7 +59,7 @@ src/
   storage/      db.ts, repository.ts, derived.ts, sync.ts, transfer.ts
   engines/      scoring, roi, estimate, run-cost, calibration, signals
   render/       view-model, resolve, template, overrides, nodes; print layout (Stage 3)
-  hooks/        useStore, useTracedDraft, useConfigForm, useTransferFlow, useEngagementForm, useQuestionSetForm; discovery rules; useEngagement, useLibrary, useConfig, useDerived
+  hooks/        useStore, useTracedDraft, useConfigForm, useTransferFlow, useEngagementForm, useQuestionSetForm; discovery rules, process rules, signal reading; useEngagement, useLibrary, useConfig, useDerived
   ui/           shell/, primitives/, views/
   app.tsx
 ```
@@ -416,10 +416,17 @@ default. Its editing model is `hooks/use-engagement-form.ts`.
   overview. An unknown id says whether the engagement does not exist or is stored
   but was left out for not validating.
 - **One draft per engagement** covers the slices this screen edits: company,
-  contacts, source, tags, next action and discovery sessions.
+  contacts, source, tags, next action, discovery sessions, processes and
+  opportunities.
   - Nothing else from the record is copied into the draft. Save writes the latest
     loaded engagement with the draft on top, then reloads, which recomputes its
     caches, so a stale copy of the rest can never be written back.
+  - **An opportunity is held without its cached score.** Every recompute replaces
+    that cache, and the draft is replaced whenever the stored slices change from
+    what it started from, so a draft that held the score would lose an edit in
+    progress to each recompute. Save puts each score back by id, and an
+    opportunity added in the draft has none, which is `null` until the next load
+    computes it.
   - The draft is replaced only when the stored slices change from what it started
     from. A reload that only recomputes cached results keeps the edit.
   - The draft survives switching tabs and is lost on leaving; there is no
@@ -444,8 +451,9 @@ default. Its editing model is `hooks/use-engagement-form.ts`.
 - **Overview:** source, next action and tags are edited here. Stage, created and
   updated times, the id and the stage history are shown. The stage is chosen at
   creation and moves with the pipeline view (Stage 1, task 4).
-- **Company:** every Company field. The detected stack is shown read-only, since
-  signal extraction fills and confirms it (Stage 1, task 10).
+- **Company:** every Company field. The detected stack lists what signal
+  extraction suggested, and only whether each tool is confirmed is edited there
+  (Signal extraction, below).
 - **Contacts:** one table, with add and remove. A removal takes effect on Save, so
   Discard brings a contact back.
 - **Discovery:** a table of the sessions held, each opening in its own runner. A
@@ -454,6 +462,64 @@ default. Its editing model is `hooks/use-engagement-form.ts`.
   Library, listing first the sets whose `appliesTo` the company matches, defaults
   to now, and ticks its attendees from the contacts. Removal works like a
   contact's.
+- **Processes:** a table of what the client does today, each row carrying the
+  three figures scoring reads with their sources, its steps, bottlenecks and pain
+  points, and how many opportunities are about it. Each process opens at
+  `#/engagements/<id>/processes/<processId>`, edited in the same draft as
+  everything else; an address that names no process says so and links back.
+  - A new process is created only once every figure the schema requires is valid
+    and its revenue impact is chosen. Nothing starts as a silent zero, a default
+    source or a default classification.
+  - It can start from a discovery session. Each figure the session's mapped
+    `process.*` answers hold is carried over whole, keeping its source, note,
+    link back to the answer and when it was said. The name and steps are typed,
+    since no mappable path holds them. Only sessions with a process answer are
+    offered, and choosing another starts every figure again rather than mixing
+    two.
+  - Every figure is recorded in the unit its field fixes, read from
+    `MAPPING_TARGETS` (`hooks/process-rules.ts`), so one typed here and one given
+    in a session cannot disagree. A share is bounded at 100 in the field.
+  - A process an opportunity is about cannot be removed, and its row says how
+    many. That is the editor's rule, not the schema's: the engines already
+    tolerate an opportunity naming a process that is gone (`MISSING_PROCESS`),
+    and a schema error would push a whole engagement out of the app on import.
+- **Opportunities:** a table of what could be automated, each row naming the
+  processes it is about, its linked patterns with the primary one, the two shares
+  it claims with their sources, and its integrations. Each opens at
+  `#/engagements/<id>/opportunities/<opportunityId>`.
+  - It is created with every required figure valid and each of the three effort
+    factors chosen, and is written with `scoring: null`. Nothing on the tab
+    computes a score, and it says so. The score is filled in by the recompute on
+    the next load, like every other cached result, so it is present after the
+    first reload whatever the form wrote.
+  - The pattern list is the Library's, empty until the pattern library is seeded
+    (Stage 2, task 9). The primary pattern is chosen from the linked ones only,
+    and unlinking it clears it. A pattern the Library no longer holds, and a
+    process the engagement no longer has, are shown as missing rather than
+    dropped.
+  - An opportunity names at least one process, and every one it names exists.
+    Both are the editor's rules, for the reason above. One in the scope being
+    priced cannot be removed, since the scope is the only record of what is
+    priced; the scope is not part of the draft, so the row reads it from the
+    engagement as loaded.
+- **Signal extraction** is on the Company tab (`hooks/signal-reading.ts` over the
+  engine in ENGINES §6). Alex pastes website text and it is matched on the page
+  against fixed rule tables. Nothing is fetched or sent, and the pasted text is
+  not stored, only what it suggests.
+  - Each tool found is added to `company.detectedStack` unconfirmed, with the
+    matched text as its evidence. It counts once Alex ticks it, and only a
+    confirmed tool reaches a document (`confirmedTools` in the view model).
+    Suggestions live in the draft, so they survive a change of tab and are stored
+    by the one Save.
+  - Running it again never duplicates a name and never un-confirms one, and a run
+    that finds nothing new leaves the record untouched. The summary says what was
+    found, how much was added and how much was already listed.
+  - Pain signals are shown with the words that matched, the seeded question sets
+    worth running, and candidate patterns, each named where the Library holds it
+    and marked as not in the Library yet where it does not. They are not stored:
+    the record has no place for them.
+  - The stack's read-only cells carry their path, so a rule about a listed tool is
+    written on its own row, where removing it fixes it.
 - **Deleting** asks first, naming the company and saying that a connected folder
   keeps its copy, listed as stale. It then returns to the list.
 
@@ -480,8 +546,12 @@ rules are pure (`hooks/discovery-rules.ts`); the screen renders them.
   its source and note, linked back to the answer and dated to the session. A multi
   answer adds what is missing and never removes. Clearing an answer leaves the
   path as it was: a figure already given is not unsaid by an empty box. A
-  `process.*` answer is recorded and lands nowhere until process mapping exists
-  (Stage 1, task 8), which the note says.
+  `process.*` answer does not land live. It is recorded, and carried over when a
+  process is started from the session (Processes, below), which the note says.
+  Nothing yet says which process a session is about, so a live landing waits
+  until real sessions show whether one session covers several processes, whether
+  an answer changes after its process exists, and whether sessions are
+  reassigned.
 - **Raw notes** sit alongside the answers, kept as typed.
 - **An answer's issues show on its own row**, matched by the
   `discovery.<i>.answers.<j>` prefix, so a rule about any part of an answer is

@@ -134,7 +134,11 @@ The stage that makes the tool worth building. Fable throughout, or Opus after
    write back.
 9. Pattern library CRUD, seeded with: lead enrichment, email triage, document
    extraction, CRM sync, webhook processing, approval workflow, reporting
-   automation, invoice processing.
+   automation, invoice processing. Seed ids are `pat-` and the name in lower case
+   with hyphens (`pat-lead-enrichment`, `pat-email-triage`,
+   `pat-document-extraction`, `pat-crm-sync`, `pat-webhook-processing`,
+   `pat-approval-workflow`, `pat-reporting-automation`, `pat-invoice-processing`),
+   because the signal-extraction pain rules already name them (ENGINES §6).
 10. Opportunity scoring UI: ranked table, quadrant view, expandable working panel
     showing every term.
 11. Scope builder: select opportunities, pick delivery model, set support
