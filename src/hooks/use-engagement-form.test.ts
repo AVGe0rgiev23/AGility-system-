@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { engagement, newEngagement, scoringResult } from '../schema/__fixtures__/records'
+import { detectedTool, engagement, newEngagement, scoringResult } from '../schema/__fixtures__/records'
 import { EngagementSchema, type Engagement } from '../schema/engagement'
 import { DISCOVERY_SET_ID, seedQuestionSets } from '../schema/seed-question-sets'
 import type { TracedValue } from '../schema/traced'
@@ -8,6 +8,7 @@ import { leafPaths } from './form-paths'
 import {
   addContact,
   addIntegration,
+  applySignals,
   addOpportunity,
   addSession,
   addStep,
@@ -31,6 +32,7 @@ import {
   receiveEngagement,
   removeFromList,
   removeIntegration,
+  removeTool,
   removeOpportunity,
   removeProcess,
   removeSession,
@@ -270,6 +272,66 @@ describe('issues and saving', () => {
     state = setText(state, 'contacts.0.name', '')
     state = setText(state, 'contacts.0.email', 'x')
     expect(engagementFormView(state, () => undefined).tabIssues).toEqual({ overview: 0, company: 1, contacts: 2, discovery: 0, processes: 0, opportunities: 0 })
+  })
+})
+
+describe('detected tools', () => {
+  const suggestion = (name: string) => ({ ...detectedTool(), name, confirmed: false })
+
+  it('adds what signal extraction found, unconfirmed, after what is already listed', () => {
+    const state = initialEngagementForm(newEngagement())
+    const added = applySignals(state, [suggestion('HubSpot'), suggestion('Xero')])
+    expect(added.draft.company.detectedStack.map((tool) => [tool.name, tool.confirmed])).toEqual([
+      ['HubSpot', false],
+      ['Xero', false],
+    ])
+    expect(hasChanges(added)).toBe(true)
+    expect(formIssues(added)).toEqual([])
+  })
+
+  it('never un-confirms or rewrites a tool already listed, so a re-run is safe', () => {
+    const state = initialEngagementForm(engagement())
+    const held = state.draft.company.detectedStack[0]
+    if (held === undefined) throw new Error('the fixture has no detected tool')
+    const confirmed = setFlag(state, 'company.detectedStack.0.confirmed', true)
+    const rerun = applySignals(confirmed, [{ ...held, evidence: 'a different match', confirmed: false }, suggestion('Xero')])
+    expect(rerun.draft.company.detectedStack[0]).toEqual({ ...held, confirmed: true })
+    expect(rerun.draft.company.detectedStack.map((tool) => tool.name)).toEqual([held.name, 'Xero'])
+  })
+
+  it('returns the very same state when nothing found is new, so a re-run changes nothing', () => {
+    const state = initialEngagementForm(engagement())
+    const held = state.draft.company.detectedStack[0]
+    if (held === undefined) throw new Error('the fixture has no detected tool')
+    expect(applySignals(state, [held])).toBe(state)
+    expect(applySignals(state, [])).toBe(state)
+  })
+
+  it('confirms and unconfirms a tool with its flag, and removes one', () => {
+    let state = initialEngagementForm(engagement())
+    state = setFlag(state, 'company.detectedStack.0.confirmed', true)
+    expect(state.draft.company.detectedStack[0]?.confirmed).toBe(true)
+    state = setFlag(state, 'company.detectedStack.0.confirmed', false)
+    expect(state.draft.company.detectedStack[0]?.confirmed).toBe(false)
+    expect(removeTool(state, 0).draft.company.detectedStack).toEqual([])
+  })
+
+  it('places a rule about a listed tool on its row, where it can be removed', () => {
+    const state = applySignals(initialEngagementForm(newEngagement()), [suggestion('HubSpot'), suggestion('HubSpot')])
+    // The merge itself never produces a repeat, so this is data that arrived some other way.
+    expect(state.draft.company.detectedStack).toHaveLength(1)
+    const record = engagement()
+    const [held] = record.company.detectedStack
+    if (held === undefined) throw new Error('the fixture has no detected tool')
+    const doubled = initialEngagementForm({ ...record, company: { ...record.company, detectedStack: [held, { ...held, confirmed: true }] } })
+    expect(paths(doubled)).toEqual(['company.detectedStack.1.name'])
+    expect(otherProblems(doubled.draft, formIssues(doubled))).toEqual([])
+    expect(formIssues(removeTool(doubled, 1))).toEqual([])
+  })
+
+  it('locates every leaf of a listed tool, five to a row', () => {
+    const located = locatedPaths(initialEngagementForm(engagement()).draft)
+    for (const field of ['name', 'category', 'confidence', 'confirmed', 'evidence']) expect(located.has(`company.detectedStack.0.${field}`), field).toBe(true)
   })
 })
 

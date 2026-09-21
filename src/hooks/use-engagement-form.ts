@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { canonicalJson } from '../engines/inputs-hash'
-import type { Company, Contact } from '../schema/company'
+import { mergeDetectedTools } from '../engines/signals'
+import type { Company, Contact, DetectedTool } from '../schema/company'
 import type { Answer, DiscoverySession, Question, QuestionSet } from '../schema/discovery'
 import { EngagementSchema, type Engagement, type LeadSource } from '../schema/engagement'
 import type { Opportunity } from '../schema/opportunity'
@@ -65,9 +66,15 @@ export interface EngagementFormState {
 
 export type EngagementTab = 'overview' | 'company' | 'contacts' | 'discovery' | 'processes' | 'opportunities'
 
+// What a detected tool is, as signal extraction wrote it. Only whether it is confirmed is Alex's to change.
+const SIGNAL_WRITTEN = 'Written by signal extraction. Only whether a tool is confirmed is edited here.'
+
 // Leaves the screen shows but does not edit, each with the reason.
 export const NOT_EDITED: readonly { prefix: string; reason: string }[] = [
-  { prefix: 'company.detectedStack', reason: 'Filled by signal extraction and confirmed there (Stage 1, task 10).' },
+  { prefix: 'company.detectedStack.*.name', reason: SIGNAL_WRITTEN },
+  { prefix: 'company.detectedStack.*.category', reason: SIGNAL_WRITTEN },
+  { prefix: 'company.detectedStack.*.confidence', reason: SIGNAL_WRITTEN },
+  { prefix: 'company.detectedStack.*.evidence', reason: SIGNAL_WRITTEN },
   { prefix: 'contacts.*.id', reason: 'Generated when the contact is added.' },
   { prefix: 'discovery.*.id', reason: 'Generated when the session is started.' },
   { prefix: 'discovery.*.questionSetId', reason: 'The question set is chosen when the session is started.' },
@@ -101,6 +108,8 @@ const COMPANY_FIELDS = [
   'preferredDeliveryModel',
 ] as const
 const CONTACT_FIELDS = ['name', 'role', 'email', 'phone', 'isDecisionMaker', 'notes'] as const
+// A detected tool shows all five; four are read-only outputs that carry their path so their issues show on the row.
+const DETECTED_FIELDS = ['name', 'category', 'confidence', 'confirmed', 'evidence'] as const
 const PROCESS_FIELDS = [
   'name',
   'description',
@@ -252,6 +261,23 @@ export function addContact(state: EngagementFormState, id: string): EngagementFo
 
 export function removeFromList(state: EngagementFormState, path: StringList | 'contacts', index: number): EngagementFormState {
   return editList(state, path, listAt(state, path).filter((_, at) => at !== index))
+}
+
+// ---- Detected tools ------------------------------------------------------------------------------------
+
+// Adds what signal extraction found that the stack does not hold, unconfirmed. An entry already there is
+// never touched, so re-running cannot un-confirm a tool or overwrite the evidence it was confirmed on.
+// Confirming is a flag on the row, set with setFlag.
+export function applySignals(state: EngagementFormState, found: readonly DetectedTool[]): EngagementFormState {
+  const stack = state.draft.company.detectedStack
+  const merged = mergeDetectedTools(stack, found)
+  if (merged === stack) return state
+  return { ...state, draft: { ...state.draft, company: { ...state.draft.company, detectedStack: merged } } }
+}
+
+export function removeTool(state: EngagementFormState, index: number): EngagementFormState {
+  const stack = state.draft.company.detectedStack
+  return { ...state, draft: { ...state.draft, company: { ...state.draft.company, detectedStack: stack.filter((_, at) => at !== index) } } }
 }
 
 // ---- Processes ---------------------------------------------------------------------------------------
@@ -493,6 +519,7 @@ export function locatedPaths(draft: EngagementEdits): Set<string> {
     'nextAction.due',
     ...LIST_PATHS,
     ...draft.contacts.flatMap((_, index) => CONTACT_FIELDS.map((field) => `contacts.${index}.${field}`)),
+    ...draft.company.detectedStack.flatMap((_, index) => DETECTED_FIELDS.map((field) => `company.detectedStack.${index}.${field}`)),
     ...items('tags', draft.tags),
     ...items('company.statedTools', draft.company.statedTools),
     ...items('company.constraints.compliance', draft.company.constraints.compliance),
@@ -629,6 +656,8 @@ export function engagementFormView(state: EngagementFormState, update: Update) {
       const id = crypto.randomUUID()
       update((current) => addContact(current, id))
     },
+    applySignals: (found: readonly DetectedTool[]) => update((current) => applySignals(current, found)),
+    removeTool: (index: number) => update((current) => removeTool(current, index)),
     addProcess: (process: Process) => update((current) => addProcess(current, process)),
     removeProcess: (index: number) => update((current) => removeProcess(current, index)),
     addStep: (index: number) => {

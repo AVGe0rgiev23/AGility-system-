@@ -136,7 +136,7 @@ export function EngagementScreen({ form, tab, item, saving, saveError, onSave, d
         ) : active.id === 'overview' ? (
           <OverviewTab form={form} deletion={deletion} />
         ) : active.id === 'company' ? (
-          <CompanyTab form={form} industries={industries} />
+          <CompanyTab form={form} industries={industries} questionSets={questionSets} patterns={patterns} />
         ) : active.id === 'contacts' ? (
           <ContactsTab form={form} />
         ) : active.id === 'discovery' ? (
