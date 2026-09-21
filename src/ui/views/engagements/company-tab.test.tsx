@@ -30,6 +30,7 @@ function render(state: EngagementFormState, industries: readonly string[] | null
       deletion={{ confirming: false, deleting: false, error: null, onAsk: ignore, onConfirm: ignore, onCancel: ignore }}
       item={null}
       questionSets={[]}
+      patterns={[]}
       industries={industries}
     />,
   )

@@ -22,6 +22,7 @@ function render(state: EngagementFormState, tab: string | null = null, patch: { 
       deletion={patch.deletion ?? NO_DELETION}
       item={null}
       questionSets={[]}
+      patterns={[]}
       industries={['Professional Services', 'logistics']}
     />,
   )
