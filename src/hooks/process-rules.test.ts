@@ -4,6 +4,7 @@ import { MAPPING_TARGETS, type Answer, type DiscoverySession, type Question, typ
 import type { Opportunity } from '../schema/opportunity'
 import type { TracedValue } from '../schema/traced'
 import {
+  carriesProcessFigures,
   figureMeasure,
   initialOpportunityDraft,
   initialProcessDraft,
@@ -164,6 +165,14 @@ describe('processDraftFromSession', () => {
     expect(draft.revenueImpact).toBe('')
     // Still refused until the rest is given, rather than quietly inventing it.
     expect(processDraftIssues(draft).map((issue) => issue.path)).toEqual(['name', 'minutesPerOccurrence', 'peopleInvolved', 'revenueImpact'])
+  })
+
+  it('says whether a session has anything to carry, so a session about something else is not offered', () => {
+    expect(carriesProcessFigures(processDraftFromSession(answeredSession(), sessionSet()))).toBe(true)
+    expect(carriesProcessFigures(processDraftFromSession({ ...answeredSession(), answers: [] }, sessionSet()))).toBe(false)
+    // One answer is enough: the rest can be typed.
+    const revenueOnly = { ...answeredSession(), answers: answeredSession().answers.filter((answer) => answer.questionId === 'q-impact') }
+    expect(carriesProcessFigures(processDraftFromSession(revenueOnly, sessionSet()))).toBe(true)
   })
 
   it('names nothing from the session, since no mappable path holds a process name', () => {

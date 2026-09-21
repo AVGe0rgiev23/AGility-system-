@@ -27,7 +27,11 @@ function MappingNote({ form, question }: { form: EngagementFormView; question: Q
   if (!question.mapsTo.startsWith('company.')) {
     return (
       <p className="pt-0.5 text-xs text-muted">
-        Recorded for <span className="num">{question.mapsTo}</span>; process mapping is built in Stage 1, task 8, and nothing is written until then.
+        Recorded for <span className="num">{question.mapsTo}</span>. It is carried over when a process is started from this session, on the{' '}
+        <a href={hrefFor({ name: 'engagement', id: form.saved.id, tab: 'processes' })} className="text-fg underline">
+          Processes tab
+        </a>
+        .
       </p>
     )
   }

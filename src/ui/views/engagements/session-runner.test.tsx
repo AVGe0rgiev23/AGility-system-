@@ -98,9 +98,12 @@ describe('SessionRunner, asking', () => {
     expect(html).toContain('<span class="num">company.blendedHourlyCost</span>, now <span class="num">21.50 EUR/hour</span>')
   })
 
-  it('says a process answer is recorded but lands nowhere yet', () => {
-    expect(render(started())).toContain(escapeHtml('Recorded for '))
-    expect(render(started())).toContain('process mapping is built in Stage 1, task 8, and nothing is written until then.')
+  it('says a process answer is recorded, and that a process started from the session carries it over', () => {
+    const html = render(started())
+    expect(html).toContain(escapeHtml('Recorded for '))
+    expect(html).toContain('It is carried over when a process is started from this session, on the')
+    expect(html).toContain('<a href="#/engagements/')
+    expect(html).toContain('/processes" class="text-fg underline">Processes tab</a>')
   })
 
   it('offers the flags on every question, and a way to unsay an answer', () => {

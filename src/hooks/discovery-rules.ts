@@ -119,7 +119,8 @@ export function tracedForAnswer(traced: TracedValue, answerId: string, heldAt: s
   return { ...traced, answerId, capturedAt: traced.capturedAt ?? heldAt }
 }
 
-// Where a mapped answer lands in this slice. Process paths wait for process mapping (Stage 1, task 8).
+// Where a mapped answer lands as it is given. A process figure does not land live: it is carried over when a
+// process is started from the session (process-rules.ts), since nothing yet says which process a session is about.
 export function landsOnCompany(question: Question): boolean {
   return question.mapsTo !== undefined && question.mapsTo.startsWith('company.')
 }

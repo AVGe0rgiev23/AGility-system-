@@ -8,6 +8,8 @@ import { OtherProblems, SaveBar } from '../form-controls'
 import { CompanyTab } from './company-tab'
 import { ContactsTab } from './contacts-tab'
 import { DiscoveryTab } from './discovery-tab'
+import { ProcessEditor } from './process-editor'
+import { ProcessesTab } from './processes-tab'
 import { SessionRunner } from './session-runner'
 import { OverviewTab, type Deletion } from './overview-tab'
 
@@ -26,7 +28,7 @@ export const ENGAGEMENT_TABS: readonly TabDefinition[] = [
   { id: 'company', label: 'Company' },
   { id: 'contacts', label: 'Contacts' },
   { id: 'discovery', label: 'Discovery' },
-  { id: 'processes', label: 'Processes', placeholder: 'Process mapping is built in Stage 1, task 8.' },
+  { id: 'processes', label: 'Processes' },
   { id: 'opportunities', label: 'Opportunities', placeholder: 'Opportunity capture is built in Stage 1, task 9, and scoring in Stage 2, task 10.' },
   { id: 'blueprints', label: 'Blueprints', placeholder: 'The blueprint editor and its diagram are built in Stage 4, tasks 1 and 2.' },
   { id: 'scope', label: 'Scope', placeholder: 'The scope builder is built in Stage 2, task 11.' },
@@ -45,7 +47,7 @@ export interface EngagementScreenProps {
   form: EngagementFormView
   // As addressed; null is the default tab.
   tab: string | null
-  // One record inside the tab, as addressed: a discovery session.
+  // One record inside the tab, as addressed: a discovery session or a process.
   item: string | null
   saving: boolean
   saveError: string | null
@@ -139,6 +141,8 @@ export function EngagementScreen({ form, tab, item, saving, saveError, onSave, d
           ) : (
             <SessionRunner form={form} sessionId={item} questionSets={questionSets} />
           )
+        ) : active.id === 'processes' ? (
+          item === null ? <ProcessesTab form={form} questionSets={questionSets} /> : <ProcessEditor form={form} processId={item} />
         ) : null}
       </div>
     </section>

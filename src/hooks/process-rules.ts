@@ -162,6 +162,20 @@ export function processDraftFromSession(session: DiscoverySession, set: Question
   return draft
 }
 
+// Whether a draft started from a session took anything from it. A session that asked about something
+// else has no process answer to offer, so it is left out of the panel's list.
+export function carriesProcessFigures(draft: NewProcessDraft): boolean {
+  return (
+    draft.occurrencesPerMonth !== null ||
+    draft.minutesPerOccurrence !== null ||
+    draft.peopleInvolved !== null ||
+    draft.roleHourlyCost !== null ||
+    draft.errorRatePercent !== null ||
+    draft.costPerError !== null ||
+    draft.revenueImpact !== ''
+  )
+}
+
 // ---- Steps and integrations -------------------------------------------------------------------------
 
 // Manual by default, because a step worth writing down is usually one a person does; the flag is on

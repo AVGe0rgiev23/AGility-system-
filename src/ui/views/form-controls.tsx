@@ -87,6 +87,28 @@ export function TextField({ form, path, label, hint, layout, type = 'text', widt
   )
 }
 
+// A control taller than one line has no fixed height, so it does not share CONTROL's.
+const TEXTAREA = 'rounded-sm border bg-bg px-1.5 py-1 text-sm text-fg'
+
+export function TextAreaField({ form, path, label, hint, layout, rows = 3, width = 'w-[32rem]' }: ControlProps & { rows?: number; width?: string }) {
+  const id = useId()
+  const issues = form.issuesAt(path)
+  return (
+    <Field label={label} htmlFor={id} hint={hint} issues={issues} layout={layout}>
+      <textarea
+        id={id}
+        rows={rows}
+        data-config-path={path}
+        value={form.textAt(path)}
+        onChange={(event) => form.setText(path, event.target.value)}
+        aria-invalid={issues.length > 0}
+        aria-describedby={fieldDescriptionId(id)}
+        className={`${TEXTAREA} ${width} max-w-full ${issues.length > 0 ? 'border-danger' : ''}`}
+      />
+    </Field>
+  )
+}
+
 export interface ChoiceFieldProps extends ControlProps {
   options: readonly string[]
   // Shown for an empty value, which the setter stores as no value; offered only on an optional choice.
@@ -230,7 +252,22 @@ export function FormList({ form, path, title, hint, addLabel, onAdd, children }:
   )
 }
 
-export function RowActions({ name, index, count, onMove, onRemove }: { name: string; index: number; count: number; onMove?: (offset: -1 | 1) => void; onRemove: () => void }) {
+export function RowActions({
+  name,
+  index,
+  count,
+  onMove,
+  onRemove,
+  blocked,
+}: {
+  name: string
+  index: number
+  count: number
+  onMove?: (offset: -1 | 1) => void
+  onRemove: () => void
+  // Why the row cannot be removed yet, when it cannot. The button stays, disabled, and says why.
+  blocked?: string | null
+}) {
   return (
     <span className="flex gap-1">
       {onMove === undefined ? null : (
@@ -243,7 +280,14 @@ export function RowActions({ name, index, count, onMove, onRemove }: { name: str
           </button>
         </>
       )}
-      <button type="button" className={BUTTON} onClick={onRemove} aria-label={`Remove ${name}`}>
+      <button
+        type="button"
+        className={BUTTON}
+        onClick={onRemove}
+        disabled={blocked !== undefined && blocked !== null}
+        title={blocked ?? undefined}
+        aria-label={`Remove ${name}`}
+      >
         Remove
       </button>
     </span>
