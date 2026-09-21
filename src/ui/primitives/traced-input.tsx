@@ -3,9 +3,12 @@ import { useTracedDraft, type TracedField } from '../../hooks/use-traced-draft'
 import { CurrencySchema, SourceSchema, type Currency, type TracedValue } from '../../schema/traced'
 import { Field, fieldDescriptionId } from './field'
 
-// What the field measures. `unit` for anything that is not money; `currency` (the default for a new
-// value, usually the company's) with an optional `per` for money, e.g. currency="EUR" per="hour".
-type Measure = { unit: string; currency?: undefined; per?: undefined } | { currency: Currency; per?: string; unit?: undefined }
+// What the field measures. `unit` for anything that is not money, with an optional `max` for a share that
+// cannot pass its whole; `currency` (the default for a new value, usually the company's) with an optional
+// `per` for money, e.g. currency="EUR" per="hour".
+type Measure =
+  | { unit: string; max?: number; currency?: undefined; per?: undefined }
+  | { currency: Currency; per?: string; unit?: undefined; max?: undefined }
 
 // A required field can never be cleared to null, so its callback never receives one.
 type Requirement = { required: true; onChange: (next: TracedValue) => void } | { required?: false; onChange: (next: TracedValue | null) => void }
@@ -28,7 +31,7 @@ const CONTROL = 'h-6 rounded-sm border bg-bg px-1.5 text-sm text-fg'
 export function TracedInput(props: TracedInputProps) {
   const id = useId()
   const valueId = `${id}-value`
-  const field: TracedField = props.currency === undefined ? { unit: props.unit } : { currency: props.currency, per: props.per }
+  const field: TracedField = props.currency === undefined ? { unit: props.unit, max: props.max } : { currency: props.currency, per: props.per }
   const required = props.required === true
 
   const emit = (next: TracedValue | null) => {
