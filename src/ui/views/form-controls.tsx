@@ -138,6 +138,53 @@ export function FlagField({ form, path, label, hint, layout, onChange }: Control
   )
 }
 
+// A group of checkboxes picked from a list, carrying the list's path so its issues show under it.
+export function CheckboxGroup({
+  form,
+  path,
+  label,
+  hint,
+  options,
+  onToggle,
+}: {
+  form: PathForm
+  path: string
+  label: string
+  hint: string
+  options: readonly { value: string; label: string; checked: boolean }[]
+  onToggle: (value: string, on: boolean) => void
+}) {
+  const id = useId()
+  const issues = form.issuesAt(path)
+  return (
+    <div className="grid grid-cols-[11rem_minmax(0,1fr)] items-start gap-x-3 py-1">
+      <span id={`${id}-label`} className="pt-1 text-sm text-muted">
+        {label}
+      </span>
+      <div role="group" aria-labelledby={`${id}-label`} aria-describedby={fieldDescriptionId(id)} data-config-path={path} className="min-w-0">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
+          {options.map((option) => (
+            <label key={option.value} className="flex items-center gap-1.5 text-sm">
+              <input type="checkbox" checked={option.checked} onChange={(event) => onToggle(option.value, event.target.checked)} />
+              {option.label}
+            </label>
+          ))}
+        </div>
+        <div id={fieldDescriptionId(id)} className="text-xs">
+          <p className="pt-0.5 text-muted">{hint}</p>
+          {issues.length === 0 ? null : (
+            <ul role="alert" className="pt-0.5 text-danger">
+              {issues.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // A leaf the form shows but never edits, with the reason beside it.
 export function ReadOnlyField({ form, path, label, reason }: { form: PathForm; path: string; label: string; reason: string | undefined }) {
   const id = useId()
