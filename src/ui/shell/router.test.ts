@@ -16,6 +16,8 @@ describe('parseRoute', () => {
     expect(parseRoute('#/primitives')).toEqual({ name: 'primitives' })
     expect(parseRoute('#/question-sets')).toEqual({ name: 'question-sets' })
     expect(parseRoute('#/question-sets/qs-teardown')).toEqual({ name: 'question-set', id: 'qs-teardown' })
+    expect(parseRoute('#/patterns')).toEqual({ name: 'patterns' })
+    expect(parseRoute('#/patterns/pat-email-triage')).toEqual({ name: 'pattern', id: 'pat-email-triage' })
   })
 
   it('parses an item inside an engagement tab, such as a discovery session', () => {
@@ -23,6 +25,7 @@ describe('parseRoute', () => {
     expect(parseRoute('#/engagements/eng-1/discovery')).not.toHaveProperty('item')
     expect(parseRoute('#/engagements/eng-1/discovery/ds-7/extra')).toEqual({ name: 'not-found', path: '/engagements/eng-1/discovery/ds-7/extra' })
     expect(parseRoute('#/question-sets/qs-teardown/extra')).toEqual({ name: 'not-found', path: '/question-sets/qs-teardown/extra' })
+    expect(parseRoute('#/patterns/pat-email-triage/extra')).toEqual({ name: 'not-found', path: '/patterns/pat-email-triage/extra' })
   })
 
   it('tolerates trailing and doubled slashes', () => {
@@ -64,6 +67,12 @@ describe('hrefFor', () => {
     expect(hrefFor({ name: 'question-sets' })).toBe('#/question-sets')
     expect(hrefFor({ name: 'question-set', id: 'qs/1' })).toBe('#/question-sets/qs%2F1')
     expect(parseRoute(hrefFor({ name: 'question-set', id: 'Солидна/?' }))).toEqual({ name: 'question-set', id: 'Солидна/?' })
+  })
+
+  it('writes the pattern list and one pattern', () => {
+    expect(hrefFor({ name: 'patterns' })).toBe('#/patterns')
+    expect(hrefFor({ name: 'pattern', id: 'pat/1' })).toBe('#/patterns/pat%2F1')
+    expect(parseRoute(hrefFor({ name: 'pattern', id: 'Солидна/?' }))).toEqual({ name: 'pattern', id: 'Солидна/?' })
   })
 
   it('round-trips ids that contain separators, escapes, spaces and non-ASCII text', () => {

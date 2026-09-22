@@ -492,11 +492,10 @@ default. Its editing model is `hooks/use-engagement-form.ts`.
     computes a score, and it says so. The score is filled in by the recompute on
     the next load, like every other cached result, so it is present after the
     first reload whatever the form wrote.
-  - The pattern list is the Library's, empty until the pattern library is seeded
-    (Stage 2, task 9). The primary pattern is chosen from the linked ones only,
-    and unlinking it clears it. A pattern the Library no longer holds, and a
-    process the engagement no longer has, are shown as missing rather than
-    dropped.
+  - The pattern list is the Library's (Patterns, below). The primary pattern is
+    chosen from the linked ones only, and unlinking it clears it. A pattern the
+    Library no longer holds, and a process the engagement no longer has, are
+    shown as missing rather than dropped.
   - An opportunity names at least one process, and every one it names exists.
     Both are the editor's rules, for the reason above. One in the scope being
     priced cannot be removed, since the scope is the only record of what is
@@ -582,6 +581,32 @@ rules are pure (`hooks/discovery-rules.ts`); the screen renders them.
     agrees: it refuses one naming this question or a later one, leaving only a name
     from outside the set or an empty group, neither of which tests anything. This is
     the rule, not a missing control.
+
+**Patterns** are edited in the Library at `#/patterns`, one pattern at
+`#/patterns/<id>`, with the form model in `hooks/use-pattern-form.ts`. The
+screens mirror question sets exactly, since a pattern is a flat record with no
+nested, conditionally-shaped children: `hooks/pattern-library.ts` holds the
+same `with`/`without`/seed shape as `hooks/question-set-library.ts`, and the
+editor is the same path-addressed `FormSection` style as the process and
+opportunity editors.
+
+- **The list** shows each pattern's category, complexity, base hours and how
+  many opportunities across every engagement link it. A pattern any opportunity
+  links cannot be deleted, and the row says how many, computed live
+  (`patternUsage`) rather than from the pattern's own `usedInEngagements`, which
+  nothing in the app writes to yet. "Add the standard patterns" appears only
+  while a seeded id is missing, seeded on a new store the way the standard
+  question sets are (`schema/seed-patterns.ts`).
+- **Creation is gated on `baseHours`, not on every field.** It feeds scoring's
+  `rawBuildHours` directly, so nothing sensible defaults it: the New pattern
+  panel refuses to create until a positive number is typed, the same treatment
+  Process and Opportunity give every figure with a pricing consequence. Every
+  other field starts blank and is filled in afterward in the editor, exactly as
+  a new process starts with a blank description.
+- **The editor** covers every field but `blueprintSkeleton` (Stage 4) and
+  `usedInEngagements`: name, category, complexity, base hours, the client-facing
+  problem, solution and explanation, the technical architecture, required
+  integrations, risks and code notes.
 
 ## Security model
 

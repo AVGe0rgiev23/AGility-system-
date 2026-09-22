@@ -147,7 +147,7 @@ export function OpportunityEditor({ form, opportunityId, patterns }: Opportunity
             patterns === null
               ? 'The stored Library is unusable, so patterns cannot be listed. The store notice above lists why.'
               : known.length === 0
-                ? 'The Library has no patterns yet; they arrive with the pattern library (Stage 2, task 9).'
+                ? 'The Library has no patterns yet. Add the standard ones, or create one, from the Patterns screen.'
                 : 'Candidate patterns for this build. Their base hours feed scoring and the estimate.'
           }
           options={patternOptions}

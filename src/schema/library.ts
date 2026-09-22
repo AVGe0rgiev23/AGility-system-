@@ -2,30 +2,36 @@ import { z } from 'zod'
 import { BlueprintSchema } from './blueprint'
 import { QuestionSetSchema } from './discovery'
 
-export const PatternSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  category: z.string(),
-  // Client-facing.
-  problem: z.string(),
-  // Client-facing.
-  solution: z.string(),
-  // Technical.
-  architecture: z.string(),
-  requiredIntegrations: z.array(z.string()),
-  complexity: z.enum(['low', 'medium', 'high']),
-  // Uncalibrated. Calibration is applied in estimation only; applying it here as
-  // well would compound the multiplier and inflate every quote. Positive, because
-  // a linked pattern at zero hours would make its build free in every estimate.
-  baseHours: z.number().positive(),
-  risks: z.array(z.string()),
-  // Drops straight into proposals.
-  clientExplanation: z.string(),
-  // A skeleton belongs to no engagement yet, so it has no id or opportunityId.
-  blueprintSkeleton: BlueprintSchema.omit({ id: true, opportunityId: true }).nullable(),
-  codeNotes: z.string(),
-  usedInEngagements: z.array(z.string()),
-})
+export const PatternSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    category: z.string(),
+    // Client-facing.
+    problem: z.string(),
+    // Client-facing.
+    solution: z.string(),
+    // Technical.
+    architecture: z.string(),
+    requiredIntegrations: z.array(z.string()),
+    complexity: z.enum(['low', 'medium', 'high']),
+    // Uncalibrated. Calibration is applied in estimation only; applying it here as
+    // well would compound the multiplier and inflate every quote. Positive, because
+    // a linked pattern at zero hours would make its build free in every estimate.
+    baseHours: z.number().positive(),
+    risks: z.array(z.string()),
+    // Drops straight into proposals.
+    clientExplanation: z.string(),
+    // A skeleton belongs to no engagement yet, so it has no id or opportunityId.
+    blueprintSkeleton: BlueprintSchema.omit({ id: true, opportunityId: true }).nullable(),
+    codeNotes: z.string(),
+    usedInEngagements: z.array(z.string()),
+  })
+  .superRefine((pattern, ctx) => {
+    // It identifies the pattern in every picker that links to it: the opportunity editor, the
+    // question set's "suggests patterns", and this library's own list.
+    if (pattern.name.trim() === '') ctx.addIssue({ code: 'custom', path: ['name'], message: 'A pattern needs a name' })
+  })
 export type Pattern = z.infer<typeof PatternSchema>
 
 export const CalibrationRecordSchema = z.object({
@@ -76,10 +82,17 @@ export const LibrarySchema = z
   })
   .superRefine((library, ctx) => {
     // A discovery session names its question set by id, so two sets sharing one would be ambiguous.
-    const seen = new Set<string>()
+    const seenSets = new Set<string>()
     for (const [index, set] of library.questionSets.entries()) {
-      if (seen.has(set.id)) ctx.addIssue({ code: 'custom', path: ['questionSets', index, 'id'], message: `Question set id '${set.id}' is already used` })
-      seen.add(set.id)
+      if (seenSets.has(set.id)) ctx.addIssue({ code: 'custom', path: ['questionSets', index, 'id'], message: `Question set id '${set.id}' is already used` })
+      seenSets.add(set.id)
+    }
+    // An opportunity's patternIds and primaryPatternId, and a CalibrationRecord's patternId, all
+    // name a pattern by id, so two patterns sharing one would make every such link ambiguous.
+    const seenPatterns = new Set<string>()
+    for (const [index, candidate] of library.patterns.entries()) {
+      if (seenPatterns.has(candidate.id)) ctx.addIssue({ code: 'custom', path: ['patterns', index, 'id'], message: `Pattern id '${candidate.id}' is already used` })
+      seenPatterns.add(candidate.id)
     }
   })
 export type Library = z.infer<typeof LibrarySchema>

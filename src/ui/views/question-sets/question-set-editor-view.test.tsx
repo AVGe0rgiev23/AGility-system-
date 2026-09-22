@@ -105,7 +105,7 @@ describe('QuestionSetEditorScreen, fields', () => {
   })
 
   it('lists patterns to suggest, and says when the Library has none yet', () => {
-    expect(render(everyKind())).toContain('The Library has no patterns yet; they arrive with the pattern library (Stage 2, task 9).')
+    expect(render(everyKind())).toContain('The Library has no patterns yet. Add the standard ones, or create one, from the Patterns screen.')
     const withPatterns = render(everyKind(), { patterns: [pattern()] })
     expect(withPatterns).toContain('<input type="checkbox" checked=""/>Email triage')
   })

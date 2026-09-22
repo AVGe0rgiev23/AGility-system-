@@ -97,7 +97,7 @@ describe('OpportunityEditor, what it says', () => {
   })
 
   it('says why the pattern list is empty, and names a stored pattern the Library does not hold', () => {
-    expect(render(initialEngagementForm(engagement()), { patterns: [] })).toContain('The Library has no patterns yet; they arrive with the pattern library (Stage 2, task 9).')
+    expect(render(initialEngagementForm(engagement()), { patterns: [] })).toContain('The Library has no patterns yet. Add the standard ones, or create one, from the Patterns screen.')
     expect(render(initialEngagementForm(engagement()), { patterns: null })).toContain('The stored Library is unusable, so patterns cannot be listed.')
     const html = render(initialEngagementForm(engagement()), { patterns: [{ id: 'pat-crm-sync', name: 'CRM sync' }] })
     expect(html).toContain('missing: pat-email-triage')

@@ -762,6 +762,26 @@ interface TemplateSection {
 }
 ```
 
+### Library validation
+
+`PatternSchema` and `LibrarySchema` enforce these rules on top of the types
+above, for the reason given under Company, Validation. Within the Library each
+path is prefixed, as in `patterns.1.id`.
+
+| Rule | Issue path |
+|---|---|
+| A pattern's name is not blank | `name` |
+| Pattern ids are unique in the Library | `patterns.<i>.id`, on the later record |
+
+Why:
+
+- **A name.** It identifies the pattern in every picker that links to it: the
+  opportunity editor, a question's "suggests patterns", and the pattern list
+  itself.
+- **Unique ids.** An opportunity's `patternIds` and `primaryPatternId`, and a
+  `CalibrationRecord.patternId`, all name a pattern by id, so two patterns
+  sharing one would make every such link ambiguous.
+
 ## Config (single record)
 
 Everything the operator may tune lives here. Constants that encode the scoring

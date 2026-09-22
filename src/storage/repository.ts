@@ -5,6 +5,7 @@ import { EngagementSchema, type Engagement } from '../schema/engagement'
 import { LibrarySchema, type Library } from '../schema/library'
 import { MetaSchema, type Meta } from '../schema/meta'
 import { MigrationError, runMigrations } from '../schema/migrations/run-migrations'
+import { seedPatterns } from '../schema/seed-patterns'
 import { seedQuestionSets } from '../schema/seed-question-sets'
 import { WholeStoreSchema, type WholeStore } from '../schema/store'
 import { CURRENT_SCHEMA_VERSION } from '../schema/version'
@@ -86,10 +87,10 @@ export interface RepositoryOptions {
 
 export type Repository = ReturnType<typeof createRepository>
 
-// A new store starts with the standard question sets and nothing else, the way Config starts from its
+// A new store starts with the standard question sets and patterns, the way Config starts from its
 // defaults. Every other collection fills from use.
 function seedLibrary(): Library {
-  return { patterns: [], questionSets: seedQuestionSets(), templates: [], calibration: [] }
+  return { patterns: seedPatterns(), questionSets: seedQuestionSets(), templates: [], calibration: [] }
 }
 
 function describeError(error: unknown): string {

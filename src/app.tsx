@@ -5,6 +5,8 @@ import { useRoute, type Route } from './ui/shell/router'
 import { StoreLoading, StoreNotices, StoreRefusal } from './ui/shell/store-status'
 import { DEFAULT_LIST_PREFS, EngagementListView, type EngagementListPrefs } from './ui/views/engagements/engagement-list-view'
 import { EngagementView } from './ui/views/engagements/engagement-view'
+import { PatternEditorView } from './ui/views/patterns/pattern-editor-view'
+import { PatternListView } from './ui/views/patterns/pattern-list-view'
 import { PlaceholderView } from './ui/views/placeholder-view'
 import { PrimitivesView } from './ui/views/primitives-view'
 import { QuestionSetEditorView } from './ui/views/question-sets/question-set-editor-view'
@@ -38,6 +40,10 @@ function Page({ route, loaded, handle, appVersion, listPrefs, onListPrefs }: Pag
       return <QuestionSetListView loaded={loaded} saveLibrary={handle.saveLibrary} />
     case 'question-set':
       return <QuestionSetEditorView loaded={loaded} id={route.id} saveLibrary={handle.saveLibrary} />
+    case 'patterns':
+      return <PatternListView loaded={loaded} saveLibrary={handle.saveLibrary} />
+    case 'pattern':
+      return <PatternEditorView loaded={loaded} id={route.id} saveLibrary={handle.saveLibrary} />
     case 'settings':
       return <SettingsView loaded={loaded} handle={handle} appVersion={appVersion} />
     case 'primitives':

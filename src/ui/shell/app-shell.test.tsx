@@ -19,12 +19,19 @@ describe('AppShell', () => {
     expect(html).toContain('href="#/settings"')
     expect(html).toContain('href="#/primitives"')
     expect(html).toContain('href="#/question-sets"')
+    expect(html).toContain('href="#/patterns"')
   })
 
   it('counts a question set as the question-set list', () => {
     const editor = shell({ name: 'question-set', id: 'qs-teardown' })
     expect(editor.match(/aria-current="page"/g)).toHaveLength(1)
     expect(editor).toMatch(/href="#\/question-sets" aria-current="page"/)
+  })
+
+  it('counts a pattern as the pattern list', () => {
+    const editor = shell({ name: 'pattern', id: 'pat-email-triage' })
+    expect(editor.match(/aria-current="page"/g)).toHaveLength(1)
+    expect(editor).toMatch(/href="#\/patterns" aria-current="page"/)
   })
 
   it('marks exactly the current screen, counting engagement detail as the engagement list', () => {

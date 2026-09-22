@@ -46,6 +46,10 @@ describe('PatternSchema', () => {
     ])
   })
 
+  it('requires a name that is not blank, since it identifies the pattern everywhere it is picked', () => {
+    expect(issuePaths(PatternSchema, { ...pattern(), name: '  ' })).toEqual(['name'])
+  })
+
   it('rejects an unknown complexity and a non-numeric baseHours', () => {
     expect(issuePaths(PatternSchema, { ...pattern(), complexity: 'extreme' })).toEqual(['complexity'])
     expect(issuePaths(PatternSchema, { ...pattern(), baseHours: '12' })).toEqual(['baseHours'])
@@ -161,6 +165,11 @@ describe('LibrarySchema', () => {
   it('refuses two question sets with the same id, at the later one', () => {
     const questionSets = [questionSet(), { ...questionSet(), name: 'Copy' }]
     expect(issuePaths(LibrarySchema, { ...library(), questionSets })).toEqual(['questionSets.1.id'])
+  })
+
+  it('refuses two patterns with the same id, at the later one, since an opportunity links a pattern by id', () => {
+    const patterns = [pattern(), { ...pattern(), name: 'Copy' }]
+    expect(issuePaths(LibrarySchema, { ...library(), patterns })).toEqual(['patterns.1.id'])
   })
 
   it('infers the spec types', () => {

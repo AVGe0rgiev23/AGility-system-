@@ -60,7 +60,7 @@ function QuestionDetails({ form, question, index, questions, patterns }: { form:
         form={form}
         path={at('suggestsPatterns')}
         label="Suggests patterns"
-        hint={patterns.length === 0 ? 'The Library has no patterns yet; they arrive with the pattern library (Stage 2, task 9).' : 'Candidate patterns this question points towards.'}
+        hint={patterns.length === 0 ? 'The Library has no patterns yet. Add the standard ones, or create one, from the Patterns screen.' : 'Candidate patterns this question points towards.'}
         options={patternOptions}
         onToggle={(id, on) => form.togglePattern(index, id, on)}
       />

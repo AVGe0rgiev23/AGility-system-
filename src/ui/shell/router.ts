@@ -9,6 +9,8 @@ export type Route =
   | { name: 'engagement'; id: string; tab: string | null; item?: string }
   | { name: 'question-sets' }
   | { name: 'question-set'; id: string }
+  | { name: 'patterns' }
+  | { name: 'pattern'; id: string }
   | { name: 'settings' }
   | { name: 'primitives' }
   | { name: 'not-found'; path: string }
@@ -34,6 +36,9 @@ export function parseRoute(hash: string): Route {
   if (head === 'question-sets' && tab === undefined) {
     return id === undefined ? { name: 'question-sets' } : { name: 'question-set', id }
   }
+  if (head === 'patterns' && tab === undefined) {
+    return id === undefined ? { name: 'patterns' } : { name: 'pattern', id }
+  }
   if (id !== undefined) return notFound
   if (head === 'settings') return { name: 'settings' }
   if (head === 'primitives') return { name: 'primitives' }
@@ -42,6 +47,7 @@ export function parseRoute(hash: string): Route {
 
 export function hrefFor(route: RouteTarget): string {
   if (route.name === 'question-set') return `#/question-sets/${encodeURIComponent(route.id)}`
+  if (route.name === 'pattern') return `#/patterns/${encodeURIComponent(route.id)}`
   if (route.name !== 'engagement') return `#/${route.name}`
   // An item lives inside a tab, so it is written only with one.
   const segments = route.tab === null ? [route.id] : route.item === undefined ? [route.id, route.tab] : [route.id, route.tab, route.item]
