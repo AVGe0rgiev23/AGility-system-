@@ -142,6 +142,16 @@ describe('CompanySchema', () => {
     expect(issuePaths(CompanySchema, { ...base, statedTools: ['HubSpot', 'hubspot'] })).toEqual([])
   })
 
+  it('requires a detected tool to be named and categorised, and refuses a repeated name', () => {
+    const base = company()
+    const tool = detectedTool()
+    expect(issuePaths(CompanySchema, { ...base, detectedStack: [{ ...tool, name: ' ' }] })).toEqual(['detectedStack.0.name'])
+    expect(issuePaths(CompanySchema, { ...base, detectedStack: [{ ...tool, category: '' }] })).toEqual(['detectedStack.0.category'])
+    // Merging a fresh extraction keys on the name, so a repeat would hide one behind the other.
+    expect(issuePaths(CompanySchema, { ...base, detectedStack: [tool, { ...tool, confirmed: true }] })).toEqual(['detectedStack.1.name'])
+    expect(issuePaths(CompanySchema, { ...base, detectedStack: [tool, { ...tool, name: 'hubspot' }] })).toEqual([])
+  })
+
   it('infers the spec types', () => {
     expectTypeOf<Company['currency']>().toEqualTypeOf<Currency>()
     expectTypeOf<Company['blendedHourlyCost']>().toEqualTypeOf<TracedValue | null>()

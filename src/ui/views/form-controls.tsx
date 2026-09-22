@@ -2,6 +2,7 @@ import { useId, type ReactNode } from 'react'
 import { formatNumber } from '../format'
 import { Field, fieldDescriptionId } from '../primitives/field'
 import { NumberInput } from '../primitives/number-input'
+import { Table } from '../primitives/table'
 
 // The controls every path-addressed form is built from: Settings and the engagement detail. Each
 // writes its path as data-config-path and points aria-describedby at the block its issues are written
@@ -86,6 +87,28 @@ export function TextField({ form, path, label, hint, layout, type = 'text', widt
   )
 }
 
+// A control taller than one line has no fixed height, so it does not share CONTROL's.
+const TEXTAREA = 'rounded-sm border bg-bg px-1.5 py-1 text-sm text-fg'
+
+export function TextAreaField({ form, path, label, hint, layout, rows = 3, width = 'w-[32rem]' }: ControlProps & { rows?: number; width?: string }) {
+  const id = useId()
+  const issues = form.issuesAt(path)
+  return (
+    <Field label={label} htmlFor={id} hint={hint} issues={issues} layout={layout}>
+      <textarea
+        id={id}
+        rows={rows}
+        data-config-path={path}
+        value={form.textAt(path)}
+        onChange={(event) => form.setText(path, event.target.value)}
+        aria-invalid={issues.length > 0}
+        aria-describedby={fieldDescriptionId(id)}
+        className={`${TEXTAREA} ${width} max-w-full ${issues.length > 0 ? 'border-danger' : ''}`}
+      />
+    </Field>
+  )
+}
+
 export interface ChoiceFieldProps extends ControlProps {
   options: readonly string[]
   // Shown for an empty value, which the setter stores as no value; offered only on an optional choice.
@@ -138,6 +161,53 @@ export function FlagField({ form, path, label, hint, layout, onChange }: Control
   )
 }
 
+// A group of checkboxes picked from a list, carrying the list's path so its issues show under it.
+export function CheckboxGroup({
+  form,
+  path,
+  label,
+  hint,
+  options,
+  onToggle,
+}: {
+  form: PathForm
+  path: string
+  label: string
+  hint: string
+  options: readonly { value: string; label: string; checked: boolean }[]
+  onToggle: (value: string, on: boolean) => void
+}) {
+  const id = useId()
+  const issues = form.issuesAt(path)
+  return (
+    <div className="grid grid-cols-[11rem_minmax(0,1fr)] items-start gap-x-3 py-1">
+      <span id={`${id}-label`} className="pt-1 text-sm text-muted">
+        {label}
+      </span>
+      <div role="group" aria-labelledby={`${id}-label`} aria-describedby={fieldDescriptionId(id)} data-config-path={path} className="min-w-0">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
+          {options.map((option) => (
+            <label key={option.value} className="flex items-center gap-1.5 text-sm">
+              <input type="checkbox" checked={option.checked} onChange={(event) => onToggle(option.value, event.target.checked)} />
+              {option.label}
+            </label>
+          ))}
+        </div>
+        <div id={fieldDescriptionId(id)} className="text-xs">
+          <p className="pt-0.5 text-muted">{hint}</p>
+          {issues.length === 0 ? null : (
+            <ul role="alert" className="pt-0.5 text-danger">
+              {issues.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // A leaf the form shows but never edits, with the reason beside it.
 export function ReadOnlyField({ form, path, label, reason }: { form: PathForm; path: string; label: string; reason: string | undefined }) {
   const id = useId()
@@ -182,7 +252,22 @@ export function FormList({ form, path, title, hint, addLabel, onAdd, children }:
   )
 }
 
-export function RowActions({ name, index, count, onMove, onRemove }: { name: string; index: number; count: number; onMove?: (offset: -1 | 1) => void; onRemove: () => void }) {
+export function RowActions({
+  name,
+  index,
+  count,
+  onMove,
+  onRemove,
+  blocked,
+}: {
+  name: string
+  index: number
+  count: number
+  onMove?: (offset: -1 | 1) => void
+  onRemove: () => void
+  // Why the row cannot be removed yet, when it cannot. The button stays, disabled, and says why.
+  blocked?: string | null
+}) {
   return (
     <span className="flex gap-1">
       {onMove === undefined ? null : (
@@ -195,10 +280,58 @@ export function RowActions({ name, index, count, onMove, onRemove }: { name: str
           </button>
         </>
       )}
-      <button type="button" className={BUTTON} onClick={onRemove} aria-label={`Remove ${name}`}>
+      <button
+        type="button"
+        className={BUTTON}
+        onClick={onRemove}
+        disabled={blocked !== undefined && blocked !== null}
+        title={blocked ?? undefined}
+        aria-label={`Remove ${name}`}
+      >
         Remove
       </button>
     </span>
+  )
+}
+
+// A list of typed-in text entries, one control per row, with add and remove. A removal takes effect on
+// Save like any other edit. Generic in the path, so a form offers exactly the lists it can edit.
+export function StringListEditor<P extends string>({
+  form,
+  path,
+  title,
+  itemLabel,
+  hint,
+  addLabel,
+}: {
+  form: PathForm & { addToList: (path: P) => void; removeFromList: (path: P, index: number) => void }
+  path: P
+  title: string
+  itemLabel: string
+  hint: string
+  addLabel: string
+}) {
+  const list = form.valueAt(path)
+  const rows = (Array.isArray(list) ? (list as unknown[]) : []).map((item, index) => ({ item: typeof item === 'string' ? item : '', index }))
+  return (
+    <FormList form={form} path={path} title={title} hint={hint} addLabel={addLabel} onAdd={() => form.addToList(path)}>
+      <Table
+        caption={title}
+        columns={[
+          { id: 'item', header: itemLabel, cell: ({ index }) => <TextField form={form} path={`${path}.${index}`} label={`${itemLabel} ${index + 1}`} layout="cell" width="w-56" /> },
+          {
+            id: 'actions',
+            header: '',
+            cell: ({ item, index }) => (
+              <RowActions name={item === '' ? `${itemLabel.toLowerCase()} ${index + 1}` : `'${item}'`} index={index} count={rows.length} onRemove={() => form.removeFromList(path, index)} />
+            ),
+          },
+        ]}
+        rows={rows}
+        rowKey={({ index }) => String(index)}
+        empty={`No ${title.toLowerCase()}`}
+      />
+    </FormList>
   )
 }
 

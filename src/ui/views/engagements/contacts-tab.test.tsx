@@ -19,6 +19,7 @@ function render(state: EngagementFormState): string {
       deletion={{ confirming: false, deleting: false, error: null, onAsk: ignore, onConfirm: ignore, onCancel: ignore }}
       item={null}
       questionSets={[]}
+      patterns={[]}
       industries={null}
     />,
   )

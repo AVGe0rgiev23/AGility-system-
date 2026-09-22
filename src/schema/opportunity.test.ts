@@ -30,6 +30,17 @@ describe('EffortInputsSchema', () => {
       'integrations.0.authAvailable',
     ])
   })
+
+  it('requires an integration name that is not blank, since each one is counted and named in the working', () => {
+    const inputs = opportunity().effortInputs
+    const integrations = [...inputs.integrations, { name: ' ', hasPublicApi: false, authAvailable: false }]
+    expect(issuePaths(EffortInputsSchema, { ...inputs, integrations })).toEqual(['integrations.1.name'])
+  })
+
+  it('refuses a blank or repeated compliance flag, at the later entry, since each adds effort points', () => {
+    const inputs = opportunity().effortInputs
+    expect(issuePaths(EffortInputsSchema, { ...inputs, complianceFlags: ['GDPR', '', 'GDPR'] })).toEqual(['complianceFlags.1', 'complianceFlags.2'])
+  })
 })
 
 describe('OpportunitySchema', () => {
@@ -57,6 +68,32 @@ describe('OpportunitySchema', () => {
   it('validates a cached scoring result rather than trusting it', () => {
     const corrupt = { ...opportunity(), scoring: { ...scoringResult(), valueScore: 'high' } }
     expect(issuePaths(OpportunitySchema, corrupt)).toEqual(['scoring.valueScore'])
+  })
+
+  it('requires a title that is not blank, since it names the opportunity everywhere it is ranked', () => {
+    expect(issuePaths(OpportunitySchema, { ...opportunity(), title: ' ' })).toEqual(['title'])
+  })
+
+  it('refuses a repeated process or pattern, which would count its value or its hours twice', () => {
+    const base = opportunity()
+    expect(issuePaths(OpportunitySchema, { ...base, processIds: ['proc-1', 'proc-1'] })).toEqual(['processIds'])
+    expect(issuePaths(OpportunitySchema, { ...base, patternIds: ['pat-email-triage', 'pat-email-triage'] })).toEqual(['patternIds'])
+    expect(OpportunitySchema.safeParse({ ...base, processIds: ['proc-1', 'proc-1'] }).error?.issues[0]?.message).toBe("The process 'proc-1' is linked more than once")
+  })
+
+  it('requires the primary pattern to be one of the linked patterns, so estimation calibrates what scoring costed', () => {
+    const base = opportunity()
+    expect(issuePaths(OpportunitySchema, { ...base, primaryPatternId: 'pat-crm-sync' })).toEqual([])
+    expect(issuePaths(OpportunitySchema, { ...base, primaryPatternId: 'pat-invoices' })).toEqual(['primaryPatternId'])
+    expect(issuePaths(OpportunitySchema, { ...base, patternIds: [], primaryPatternId: 'pat-email-triage' })).toEqual(['primaryPatternId'])
+  })
+
+  it('holds each share to a share of the whole, since scoring divides both by 100', () => {
+    const base = opportunity()
+    const share = (value: number) => ({ value, unit: 'percent', source: 'estimated' })
+    expect(issuePaths(OpportunitySchema, { ...base, automatablePercent: share(100) })).toEqual([])
+    expect(issuePaths(OpportunitySchema, { ...base, automatablePercent: share(101) })).toEqual(['automatablePercent.value'])
+    expect(issuePaths(OpportunitySchema, { ...base, errorReductionPercent: share(150) })).toEqual(['errorReductionPercent.value'])
   })
 
   it('carries no roi field', () => {

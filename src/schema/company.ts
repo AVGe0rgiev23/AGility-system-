@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { addListEntryIssues } from './list-rules'
 import { CurrencySchema, TracedValueSchema } from './traced'
 
 // Client websites may still be plain http, unlike the agency's own, which must be https.
@@ -8,14 +9,20 @@ const EmailSchema = z.email()
 export const DeliveryModelSchema = z.enum(['fully-managed', 'client-owned', 'hybrid'])
 export type DeliveryModel = z.infer<typeof DeliveryModelSchema>
 
-export const DetectedToolSchema = z.object({
-  name: z.string(),
-  category: z.string(),
-  evidence: z.string().max(80),
-  confidence: z.enum(['high', 'medium', 'low']),
-  // Signal extraction only suggests; a tool counts once Alex confirms it.
-  confirmed: z.boolean(),
-})
+export const DetectedToolSchema = z
+  .object({
+    name: z.string(),
+    category: z.string(),
+    evidence: z.string().max(80),
+    confidence: z.enum(['high', 'medium', 'low']),
+    // Signal extraction only suggests; a tool counts once Alex confirms it.
+    confirmed: z.boolean(),
+  })
+  .superRefine((tool, ctx) => {
+    // A suggestion is confirmed, merged and printed by its name, and shown under its category.
+    if (tool.name.trim() === '') ctx.addIssue({ code: 'custom', path: ['name'], message: 'A detected tool needs a name' })
+    if (tool.category.trim() === '') ctx.addIssue({ code: 'custom', path: ['category'], message: 'A detected tool needs a category' })
+  })
 export type DetectedTool = z.infer<typeof DetectedToolSchema>
 
 export const ContactSchema = z
@@ -82,15 +89,17 @@ export const CompanySchema = z.object({
   }
   // Stated tools feed signal extraction, and each compliance requirement adds effort points to every
   // opportunity it reaches, so a blank or repeated entry would count for nothing.
-  const listEntries = (list: readonly string[], path: string[], noun: string) => {
-    const seen = new Set<string>()
-    for (const [index, entry] of list.entries()) {
-      if (entry.trim() === '') ctx.addIssue({ code: 'custom', path: [...path, index], message: `A ${noun} cannot be blank` })
-      else if (seen.has(entry)) ctx.addIssue({ code: 'custom', path: [...path, index], message: `The ${noun} '${entry}' is already listed` })
-      seen.add(entry)
+  addListEntryIssues(ctx, company.statedTools, ['statedTools'], 'stated tool')
+  addListEntryIssues(ctx, company.constraints.compliance, ['constraints', 'compliance'], 'compliance requirement')
+
+  // Merging a fresh extraction into the stack keys on the name, so a repeat would hide one behind the
+  // other, and confirming either would leave the same name both confirmed and not.
+  const seenTools = new Set<string>()
+  for (const [index, tool] of company.detectedStack.entries()) {
+    if (seenTools.has(tool.name)) {
+      ctx.addIssue({ code: 'custom', path: ['detectedStack', index, 'name'], message: `The tool '${tool.name}' is already detected` })
     }
+    seenTools.add(tool.name)
   }
-  listEntries(company.statedTools, ['statedTools'], 'stated tool')
-  listEntries(company.constraints.compliance, ['constraints', 'compliance'], 'compliance requirement')
 })
 export type Company = z.infer<typeof CompanySchema>

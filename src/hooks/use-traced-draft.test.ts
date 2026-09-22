@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CURRENCIES, mulberry32, pick, randomInt, randomNumber, SOURCES, type Random } from '../engines/__fixtures__/engine-fixtures'
 import { TracedValueSchema, type TracedValue } from '../schema/traced'
 import {
+  aboveMaximum,
   AMBIGUOUS_NUMBER,
   assembleDraft,
   dotReadingWarning,
@@ -24,6 +25,7 @@ import {
 const MINUTES: TracedField = { unit: 'minutes' }
 const HOURLY_EUR: TracedField = { currency: 'EUR', per: 'hour' }
 const COST_EUR: TracedField = { currency: 'EUR' }
+const PERCENT: TracedField = { unit: 'percent', max: 100 }
 
 function parsedValue(text: string): number {
   const parsed = parseNumberText(text)
@@ -213,6 +215,28 @@ describe('assembleDraft', () => {
     const result = assembleDraft(draft({ text: '4', source: 'measured' }), { unit: 'EUR/hour' }, null, true)
     expect(result).toEqual({ kind: 'invalid', issues: ["currency: currency is required for money unit 'EUR/hour'"] })
   })
+
+  it('accepts a value at the field maximum and refuses one above it, whichever way it is written', () => {
+    expect(assembleDraft(draft({ text: '100', source: 'estimated' }), PERCENT, null, true)).toEqual({
+      kind: 'value',
+      value: { value: 100, unit: 'percent', source: 'estimated' },
+    })
+    expect(assembleDraft(draft({ text: '100.5', source: 'estimated' }), PERCENT, null, true)).toEqual({ kind: 'invalid', issues: [aboveMaximum(100)] })
+    expect(assembleDraft(draft({ text: '100,5', source: 'estimated' }), PERCENT, null, true)).toEqual({ kind: 'invalid', issues: [aboveMaximum(100)] })
+  })
+
+  it('names a missing source beside a value above the maximum, so both can be fixed at once', () => {
+    expect(assembleDraft(draft({ text: '150' }), PERCENT, null, true)).toEqual({ kind: 'invalid', issues: [aboveMaximum(100), SOURCE_REQUIRED] })
+  })
+
+  it('bounds nothing when the field has no maximum', () => {
+    expect(assembleDraft(draft({ text: '150', source: 'estimated' }), { unit: 'percent' }, null, true)).toMatchObject({ kind: 'value' })
+  })
+
+  it('refuses a stored value above the maximum when its field is opened', () => {
+    const stored: TracedValue = { value: 150, unit: 'percent', source: 'estimated' }
+    expect(assembleDraft(draftFromValue(stored, PERCENT), PERCENT, stored, true)).toEqual({ kind: 'invalid', issues: [aboveMaximum(100)] })
+  })
 })
 
 describe('sameTraced', () => {
@@ -298,6 +322,16 @@ describe('receiveValue and editDraft', () => {
     expect(state.draft.text).toBe('1,200')
   })
 
+  it('emits nothing for a value above the field maximum and reports the draft pending, so it never reaches the parent', () => {
+    const share: TracedValue = { value: 70, unit: 'percent', source: 'estimated' }
+    const initial = initialDraftState(share, PERCENT)
+    const above = editDraft(initial, { text: '150' }, PERCENT, share, true)
+    expect(above.emit).toBeUndefined()
+    expect(above.pending).toBe(true)
+    expect(above.state.draft.text).toBe('150')
+    expect(editDraft(initial, { text: '90' }, PERCENT, share, true).emit).toEqual({ value: 90, unit: 'percent', source: 'estimated' })
+  })
+
   it('emits a dot reading that carries a warning: the warning never blocks', () => {
     const { emit } = editDraft(initialDraftState(stored, MINUTES), { text: '1.200' }, MINUTES, stored, true)
     expect(emit).toEqual({ value: 1.2, unit: 'minutes', source: 'measured' })
@@ -369,6 +403,8 @@ describe('receiveValue and editDraft', () => {
 
 const CASES = 2000
 
+// Never bounded: the properties below are over values that fit their field, and a random maximum would
+// make some random values not fit. Bounds are covered by their own cases under assembleDraft.
 function randomField(random: Random): TracedField {
   const choice = randomInt(random, 0, 2)
   if (choice === 0) return { unit: pick(random, ['minutes', 'percent', 'count/month', 'hours/week']) }

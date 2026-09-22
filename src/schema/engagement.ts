@@ -77,6 +77,20 @@ export const EngagementSchema = z.object({
     })
     .nullable(),
 }).superRefine((engagement, ctx) => {
+  // An opportunity links to a process by id, the scope selects an opportunity by id, and the engagement
+  // form re-joins each cached score by id. A repeat would make every one of those name two records.
+  const uniqueIds = (records: readonly { id: string }[], key: 'processes' | 'opportunities', noun: string) => {
+    const seen = new Set<string>()
+    for (const [index, record] of records.entries()) {
+      if (seen.has(record.id)) {
+        ctx.addIssue({ code: 'custom', path: [key, index, 'id'], message: `${noun} id '${record.id}' is already used` })
+      }
+      seen.add(record.id)
+    }
+  }
+  uniqueIds(engagement.processes, 'processes', 'Process')
+  uniqueIds(engagement.opportunities, 'opportunities', 'Opportunity')
+
   // The list filters by tag, so a blank tag or the same tag twice would filter nothing sensible.
   const seen = new Set<string>()
   for (const [index, tag] of engagement.tags.entries()) {

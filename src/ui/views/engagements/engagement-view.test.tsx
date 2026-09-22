@@ -22,6 +22,7 @@ function render(state: EngagementFormState, tab: string | null = null, patch: { 
       deletion={patch.deletion ?? NO_DELETION}
       item={null}
       questionSets={[]}
+      patterns={[]}
       industries={['Professional Services', 'logistics']}
     />,
   )
@@ -33,7 +34,7 @@ describe('EngagementScreen, shell', () => {
     expect(html).toContain('Rila Logistics <span class="num text-xs text-muted">IMPLEMENTATION</span>')
     for (const tab of ENGAGEMENT_TABS) expect(html, tab.id).toContain(`href="#/engagements/eng-1/${tab.id}"`)
     expect(html).toMatch(/<a href="#\/engagements\/eng-1\/overview" aria-current="page"/)
-    expect(render(initialEngagementForm(engagement()), 'processes')).toContain('Process mapping is built in Stage 1, task 8.')
+    expect(render(initialEngagementForm(engagement()), 'blueprints')).toContain('The blueprint editor and its diagram are built in Stage 4, tasks 1 and 2.')
   })
 
   it('names the task that builds each section not built yet', () => {

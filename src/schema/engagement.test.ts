@@ -94,6 +94,17 @@ describe('EngagementSchema', () => {
     expect(issuePaths(EngagementSchema, { ...engagement(), tags: ['logistics', 'Logistics'] })).toEqual([])
   })
 
+  it('refuses a repeated process or opportunity id, at the later record', () => {
+    const record = engagement()
+    const [process] = record.processes
+    const [opportunity] = record.opportunities
+    if (process === undefined || opportunity === undefined) throw new Error('the fixture has no process or opportunity')
+    // The engagement form, the derived-data recompute and the scope's selection all key on these ids.
+    expect(issuePaths(EngagementSchema, { ...record, processes: [process, { ...process, name: 'A second mapping' }] })).toEqual(['processes.1.id'])
+    expect(issuePaths(EngagementSchema, { ...record, opportunities: [opportunity, { ...opportunity, title: 'A second idea' }] })).toEqual(['opportunities.1.id'])
+    expect(issuePaths(EngagementSchema, { ...record, processes: [process, { ...process, id: 'proc-2' }] })).toEqual([])
+  })
+
   it('reports a company rule and an engagement rule together', () => {
     const record = engagement()
     expect(issuePaths(EngagementSchema, { ...record, company: { ...record.company, name: '' }, tags: ['', ''] })).toEqual([

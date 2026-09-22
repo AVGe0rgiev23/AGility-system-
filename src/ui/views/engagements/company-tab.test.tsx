@@ -5,8 +5,8 @@ import {
   engagementFormView,
   initialEngagementForm,
   locatedPaths,
-  NOT_EDITED,
   setChoice,
+  setFlag,
   setNumberText,
   setText,
   tabOf,
@@ -30,6 +30,7 @@ function render(state: EngagementFormState, industries: readonly string[] | null
       deletion={{ confirming: false, deleting: false, error: null, onAsk: ignore, onConfirm: ignore, onCancel: ignore }}
       item={null}
       questionSets={[]}
+      patterns={[]}
       industries={industries}
     />,
   )
@@ -42,19 +43,20 @@ describe('CompanyTab, every field', () => {
     expect([...renderedPaths(render(state))].sort()).toEqual(company)
   })
 
-  it('gives every company leaf a control, except the traced cost inside its one control and the detected stack it shows', () => {
+  it('gives every company leaf a control, except the traced cost inside its one control', () => {
     const state = initialEngagementForm(engagement())
     const html = render(state)
     const located = locatedPaths(state.draft)
     for (const path of leafPaths(state.draft).filter((leaf) => leaf.startsWith('company.'))) {
       if (path.startsWith('company.blendedHourlyCost.')) continue
-      if (path.startsWith('company.detectedStack.')) continue
       expect(located.has(path), path).toBe(true)
-      expect(tagFor(html, path), path).toMatch(/^<(input|select) /)
+      // A detected tool is written by signal extraction: its confirmation is a checkbox, and the rest is
+      // shown in outputs that carry their path so a rule about them is written on the row.
+      const detected = path.startsWith('company.detectedStack.')
+      expect(tagFor(html, path), path).toMatch(detected && !path.endsWith('.confirmed') ? /^<output / : /^<(input|select) /)
     }
     expect(tagFor(html, 'company.blendedHourlyCost')).toMatch(/^<input /)
-    const reason = NOT_EDITED.find((entry) => entry.prefix === 'company.detectedStack')?.reason ?? ''
-    expect(describedBy(html, 'company.detectedStack')).toContain(escapeHtml(reason))
+    expect(describedBy(html, 'company.detectedStack')).toContain('A suggestion counts once it is confirmed, and only a confirmed tool reaches a document.')
   })
 
   it('offers controls for optional fields the company does not have yet', () => {
@@ -65,6 +67,44 @@ describe('CompanyTab, every field', () => {
     expect(html).toContain('<option value="" selected="">not set</option>')
     expect(html).toContain('No stated tools')
     expect(html).toContain('Nothing detected yet')
+  })
+})
+
+describe('CompanyTab, detected stack', () => {
+  const doubled = () => {
+    const record = engagement()
+    const [held] = record.company.detectedStack
+    if (held === undefined) throw new Error('the fixture has no detected tool')
+    return initialEngagementForm({ ...record, company: { ...record.company, detectedStack: [held, { ...held, confirmed: true }] } })
+  }
+
+  it('lists each suggestion with its category, confidence and the text that proved it', () => {
+    const html = render(initialEngagementForm(engagement()))
+    expect(tagFor(html, 'company.detectedStack.0.name')).toMatch(/^<output /)
+    expect(html).toContain('>HubSpot</output>')
+    expect(html).toContain('>crm</output>')
+    expect(html).toContain('>high</output>')
+    expect(html).toContain('>js.hs-scripts.com/1234567.js</output>')
+  })
+
+  it('shows a suggestion as unconfirmed until it is ticked, and offers to remove it', () => {
+    const html = render(initialEngagementForm(engagement()))
+    expect(tagFor(html, 'company.detectedStack.0.confirmed')).toContain('type="checkbox"')
+    expect(tagFor(html, 'company.detectedStack.0.confirmed')).not.toContain('checked=""')
+    expect(html).toContain(`aria-label="${escapeHtml("Remove 'HubSpot'")}"`)
+    const confirmed = setFlag(initialEngagementForm(engagement()), 'company.detectedStack.0.confirmed', true)
+    expect(tagFor(render(confirmed), 'company.detectedStack.0.confirmed')).toContain('checked=""')
+  })
+
+  it('writes a rule about a tool on its own row, where removing it fixes it', () => {
+    const html = render(doubled())
+    expect(describedBy(html, 'company.detectedStack.1.name')).toContain(escapeHtml("The tool 'HubSpot' is already detected"))
+  })
+
+  it('offers the paste box beside it, and says nothing is fetched or sent', () => {
+    const html = render(initialEngagementForm(engagement()))
+    expect(html).toContain('Find signals')
+    expect(html).toContain('Nothing is fetched or sent anywhere')
   })
 })
 

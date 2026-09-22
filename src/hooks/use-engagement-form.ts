@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { canonicalJson } from '../engines/inputs-hash'
-import type { Company, Contact } from '../schema/company'
+import { mergeDetectedTools } from '../engines/signals'
+import type { Company, Contact, DetectedTool } from '../schema/company'
 import type { Answer, DiscoverySession, Question, QuestionSet } from '../schema/discovery'
 import { EngagementSchema, type Engagement, type LeadSource } from '../schema/engagement'
+import type { Opportunity } from '../schema/opportunity'
+import type { Process } from '../schema/process'
 import type { TracedValue } from '../schema/traced'
 import { applyAnswer, tracedForAnswer, withDerived } from './discovery-rules'
 import {
   issuesByPath,
+  moved,
   numberWarnings,
   replaceAt,
   schemaIssues,
@@ -16,6 +20,7 @@ import {
   withTextIssuesFirst,
   type FormIssue,
 } from './form-paths'
+import { newIntegration, newStep, referenceIssues } from './process-rules'
 import { parseNumberText } from './use-traced-draft'
 
 // The editing model behind the engagement detail, as pure functions like the Settings form.
@@ -28,6 +33,11 @@ import { parseNumberText } from './use-traced-draft'
 // - The draft is replaced only when the stored slices change from what it was started from. A reload
 //   that only recomputes cached results leaves an edit alone.
 
+// An opportunity as the form holds it: everything but the cached score, which is derived data the
+// screen never edits. Keeping it in the draft would make every recompute look like a change to the
+// stored slices and throw away an edit in progress (see receiveEngagement).
+export type DraftOpportunity = Omit<Opportunity, 'scoring'>
+
 export interface EngagementEdits {
   company: Company
   contacts: Contact[]
@@ -35,6 +45,8 @@ export interface EngagementEdits {
   tags: string[]
   nextAction: Engagement['nextAction']
   discovery: DiscoverySession[]
+  processes: Process[]
+  opportunities: DraftOpportunity[]
 }
 
 export interface EngagementFormState {
@@ -52,20 +64,35 @@ export interface EngagementFormState {
   generation: number
 }
 
-export type EngagementTab = 'overview' | 'company' | 'contacts' | 'discovery'
+export type EngagementTab = 'overview' | 'company' | 'contacts' | 'discovery' | 'processes' | 'opportunities'
+
+// What a detected tool is, as signal extraction wrote it. Only whether it is confirmed is Alex's to change.
+const SIGNAL_WRITTEN = 'Written by signal extraction. Only whether a tool is confirmed is edited here.'
 
 // Leaves the screen shows but does not edit, each with the reason.
 export const NOT_EDITED: readonly { prefix: string; reason: string }[] = [
-  { prefix: 'company.detectedStack', reason: 'Filled by signal extraction and confirmed there (Stage 1, task 10).' },
+  { prefix: 'company.detectedStack.*.name', reason: SIGNAL_WRITTEN },
+  { prefix: 'company.detectedStack.*.category', reason: SIGNAL_WRITTEN },
+  { prefix: 'company.detectedStack.*.confidence', reason: SIGNAL_WRITTEN },
+  { prefix: 'company.detectedStack.*.evidence', reason: SIGNAL_WRITTEN },
   { prefix: 'contacts.*.id', reason: 'Generated when the contact is added.' },
   { prefix: 'discovery.*.id', reason: 'Generated when the session is started.' },
   { prefix: 'discovery.*.questionSetId', reason: 'The question set is chosen when the session is started.' },
   { prefix: 'discovery.*.kind', reason: 'Taken from the question set the session runs.' },
   { prefix: 'discovery.*.completeness', reason: 'Computed from the required questions that show.' },
+  { prefix: 'processes.*.id', reason: 'Generated when the process is added.' },
+  { prefix: 'processes.*.steps.*.id', reason: 'Generated when the step is added.' },
+  { prefix: 'opportunities.*.id', reason: 'Generated when the opportunity is added.' },
 ]
 
 const LIST_PATHS = ['contacts', 'tags', 'company.statedTools', 'company.constraints.compliance', 'company.detectedStack'] as const
-type StringList = 'tags' | 'company.statedTools' | 'company.constraints.compliance'
+type StringList =
+  | 'tags'
+  | 'company.statedTools'
+  | 'company.constraints.compliance'
+  | `processes.${number}.systemsTouched`
+  | `processes.${number}.painPoints`
+  | `opportunities.${number}.effortInputs.complianceFlags`
 
 const COMPANY_FIELDS = [
   'name',
@@ -81,16 +108,45 @@ const COMPANY_FIELDS = [
   'preferredDeliveryModel',
 ] as const
 const CONTACT_FIELDS = ['name', 'role', 'email', 'phone', 'isDecisionMaker', 'notes'] as const
+// A detected tool shows all five; four are read-only outputs that carry their path so their issues show on the row.
+const DETECTED_FIELDS = ['name', 'category', 'confidence', 'confirmed', 'evidence'] as const
+const PROCESS_FIELDS = [
+  'name',
+  'description',
+  'owner',
+  'frequency.occurrencesPerMonth',
+  'frequency.minutesPerOccurrence',
+  'frequency.peopleInvolved',
+  'roleHourlyCost',
+  'errorProfile.errorRatePercent',
+  'errorProfile.costPerError',
+  'errorProfile.errorDescription',
+  'revenueImpact',
+  'customerFacing',
+] as const
+const STEP_FIELDS = ['action', 'system', 'isManual', 'isBottleneck', 'waitTimeMinutes'] as const
+const OPPORTUNITY_FIELDS = ['title', 'summary', 'processIds', 'patternIds', 'primaryPatternId', 'automatablePercent', 'errorReductionPercent'] as const
+const EFFORT_FIELDS = ['dataReadiness', 'approvalSteps', 'volumeTier', 'novelty', 'requiresHumanInLoop'] as const
+const INTEGRATION_FIELDS = ['name', 'hasPublicApi', 'authAvailable', 'notes'] as const
 
 // Optional text and choices: clearing one removes the key, since absent is the empty value.
 const OPTIONAL_TEXT =
-  /^(company\.(website|locationCountry|sourceOfTruth|preferredDeliveryModel|constraints\.(dataResidency|securityNotes))|contacts\.\d+\.(role|email|phone|notes))$/
-const OPTIONAL_NUMBER = /^company\.employeeCount$/
-const TRACED = /^company\.blendedHourlyCost$/
+  /^(company\.(website|locationCountry|sourceOfTruth|preferredDeliveryModel|constraints\.(dataResidency|securityNotes))|contacts\.\d+\.(role|email|phone|notes)|processes\.\d+\.(owner|errorProfile\.errorDescription|steps\.\d+\.system)|opportunities\.\d+\.effortInputs\.integrations\.\d+\.notes|opportunities\.\d+\.primaryPatternId)$/
+const OPTIONAL_NUMBER = /^(company\.employeeCount|processes\.\d+\.steps\.\d+\.waitTimeMinutes)$/
+// A figure the schema holds as a TracedValue, split by whether it may be cleared. Emptying a required
+// one would store an engagement the schema refuses, with the issue at a path no control can fix.
+const TRACED_REQUIRED = /^(processes\.\d+\.frequency\.(occurrencesPerMonth|minutesPerOccurrence|peopleInvolved)|opportunities\.\d+\.(automatablePercent|errorReductionPercent))$/
+const TRACED_NULLABLE = /^(company\.blendedHourlyCost|processes\.\d+\.(roleHourlyCost|errorProfile\.(errorRatePercent|costPerError)))$/
+
+// primaryPatternId is null rather than absent when unset, so it is not an OPTIONAL_TEXT path in the
+// usual sense; setChoice handles it on its own.
+const PRIMARY_PATTERN = /^opportunities\.\d+\.primaryPatternId$/
 
 export function editsOf(engagement: Engagement): EngagementEdits {
-  const { company, contacts, source, tags, nextAction, discovery } = engagement
-  return { company, contacts, source, tags, nextAction, discovery }
+  const { company, contacts, source, tags, nextAction, discovery, processes } = engagement
+  // The cached score is left behind and re-joined on save, so a recompute is never an edit.
+  const opportunities = engagement.opportunities.map(({ scoring: _cached, ...rest }) => rest)
+  return { company, contacts, source, tags, nextAction, discovery, processes, opportunities }
 }
 
 export function initialEngagementForm(engagement: Engagement, generation = 0): EngagementFormState {
@@ -145,6 +201,8 @@ function setNextAction(state: EngagementFormState, key: 'text' | 'due', value: s
 
 export function setText(state: EngagementFormState, path: string, text: string): EngagementFormState {
   if (path === 'nextAction.text' || path === 'nextAction.due') return setNextAction(state, path === 'nextAction.text' ? 'text' : 'due', text)
+  // Unset is null here, not an absent key, because the schema types it as nullable.
+  if (PRIMARY_PATTERN.test(path)) return withDraft(state, path, text === '' ? null : text)
   const optional = OPTIONAL_TEXT.test(path)
   const current = valueAt(state.draft, path)
   if (!(typeof current === 'string' || (optional && current === undefined))) throw new Error(`There is no text field at '${path}'`)
@@ -160,7 +218,11 @@ export function setFlag(state: EngagementFormState, path: string, on: boolean): 
 }
 
 export function setTraced(state: EngagementFormState, path: string, value: TracedValue | null): EngagementFormState {
-  if (!TRACED.test(path)) throw new Error(`There is no traced field at '${path}'`)
+  const required = TRACED_REQUIRED.test(path)
+  if (!required && !TRACED_NULLABLE.test(path)) throw new Error(`There is no traced field at '${path}'`)
+  // TracedInput never clears a required field, so reaching here means a caller asked for a record the
+  // schema refuses, with the issue at a path no control on the screen can fix.
+  if (required && value === null) throw new Error(`The figure at '${path}' is required, so it cannot be cleared`)
   return withDraft(state, path, value)
 }
 
@@ -199,6 +261,117 @@ export function addContact(state: EngagementFormState, id: string): EngagementFo
 
 export function removeFromList(state: EngagementFormState, path: StringList | 'contacts', index: number): EngagementFormState {
   return editList(state, path, listAt(state, path).filter((_, at) => at !== index))
+}
+
+// ---- Detected tools ------------------------------------------------------------------------------------
+
+// Adds what signal extraction found that the stack does not hold, unconfirmed. An entry already there is
+// never touched, so re-running cannot un-confirm a tool or overwrite the evidence it was confirmed on.
+// Confirming is a flag on the row, set with setFlag.
+export function applySignals(state: EngagementFormState, found: readonly DetectedTool[]): EngagementFormState {
+  const stack = state.draft.company.detectedStack
+  const merged = mergeDetectedTools(stack, found)
+  if (merged === stack) return state
+  return { ...state, draft: { ...state.draft, company: { ...state.draft.company, detectedStack: merged } } }
+}
+
+export function removeTool(state: EngagementFormState, index: number): EngagementFormState {
+  const stack = state.draft.company.detectedStack
+  return { ...state, draft: { ...state.draft, company: { ...state.draft.company, detectedStack: stack.filter((_, at) => at !== index) } } }
+}
+
+// ---- Processes ---------------------------------------------------------------------------------------
+
+// A record is removed by index, so any typed text and pending flag under the list goes with it: the
+// indices below it shift, and text kept by path would land on the wrong row.
+function editRecords<K extends 'processes' | 'opportunities'>(state: EngagementFormState, key: K, records: EngagementEdits[K]): EngagementFormState {
+  return {
+    ...state,
+    draft: { ...state.draft, [key]: records },
+    texts: withoutTextsUnder(state.texts, key),
+    pending: state.pending.filter((path) => !path.startsWith(`${key}.`)),
+  }
+}
+
+function processAt(state: EngagementFormState, index: number): Process {
+  const process = state.draft.processes[index]
+  if (process === undefined) throw new Error(`There is no process ${String(index)}`)
+  return process
+}
+
+function opportunityAt(state: EngagementFormState, index: number): DraftOpportunity {
+  const opportunity = state.draft.opportunities[index]
+  if (opportunity === undefined) throw new Error(`There is no opportunity ${String(index)}`)
+  return opportunity
+}
+
+export function addProcess(state: EngagementFormState, process: Process): EngagementFormState {
+  return { ...state, draft: { ...state.draft, processes: [...state.draft.processes, process] } }
+}
+
+export function removeProcess(state: EngagementFormState, index: number): EngagementFormState {
+  return editRecords(state, 'processes', state.draft.processes.filter((_, at) => at !== index))
+}
+
+export function addStep(state: EngagementFormState, index: number, id: string): EngagementFormState {
+  const process = processAt(state, index)
+  return withDraft(state, `processes.${String(index)}.steps`, [...process.steps, newStep(id)])
+}
+
+export function removeStep(state: EngagementFormState, index: number, stepIndex: number): EngagementFormState {
+  const process = processAt(state, index)
+  const path = `processes.${String(index)}.steps`
+  return { ...withDraft(state, path, process.steps.filter((_, at) => at !== stepIndex)), texts: withoutTextsUnder(state.texts, path) }
+}
+
+export function moveStep(state: EngagementFormState, index: number, stepIndex: number, offset: -1 | 1): EngagementFormState {
+  const process = processAt(state, index)
+  const path = `processes.${String(index)}.steps`
+  return { ...withDraft(state, path, moved(process.steps, stepIndex, offset)), texts: withoutTextsUnder(state.texts, path) }
+}
+
+// ---- Opportunities -------------------------------------------------------------------------------------
+
+export function addOpportunity(state: EngagementFormState, opportunity: DraftOpportunity): EngagementFormState {
+  return { ...state, draft: { ...state.draft, opportunities: [...state.draft.opportunities, opportunity] } }
+}
+
+export function removeOpportunity(state: EngagementFormState, index: number): EngagementFormState {
+  return editRecords(state, 'opportunities', state.draft.opportunities.filter((_, at) => at !== index))
+}
+
+function toggled(ids: readonly string[], id: string, on: boolean): string[] {
+  if (on) return ids.includes(id) ? [...ids] : [...ids, id]
+  return ids.filter((candidate) => candidate !== id)
+}
+
+export function toggleProcessLink(state: EngagementFormState, index: number, processId: string, on: boolean): EngagementFormState {
+  const opportunity = opportunityAt(state, index)
+  return withDraft(state, `opportunities.${String(index)}.processIds`, toggled(opportunity.processIds, processId, on))
+}
+
+// Unlinking the primary pattern clears it too: the schema refuses a primary outside the linked list,
+// and leaving it would put the issue on a select whose value is no longer offered.
+export function togglePatternLink(state: EngagementFormState, index: number, patternId: string, on: boolean): EngagementFormState {
+  const opportunity = opportunityAt(state, index)
+  const patternIds = toggled(opportunity.patternIds, patternId, on)
+  const primaryPatternId = opportunity.primaryPatternId !== null && !patternIds.includes(opportunity.primaryPatternId) ? null : opportunity.primaryPatternId
+  const next: DraftOpportunity = { ...opportunity, patternIds, primaryPatternId }
+  return { ...state, draft: { ...state.draft, opportunities: state.draft.opportunities.map((candidate, at) => (at === index ? next : candidate)) } }
+}
+
+export function addIntegration(state: EngagementFormState, index: number): EngagementFormState {
+  const opportunity = opportunityAt(state, index)
+  return withDraft(state, `opportunities.${String(index)}.effortInputs.integrations`, [...opportunity.effortInputs.integrations, newIntegration()])
+}
+
+export function removeIntegration(state: EngagementFormState, index: number, integrationIndex: number): EngagementFormState {
+  const opportunity = opportunityAt(state, index)
+  const path = `opportunities.${String(index)}.effortInputs.integrations`
+  return {
+    ...withDraft(state, path, opportunity.effortInputs.integrations.filter((_, at) => at !== integrationIndex)),
+    texts: withoutTextsUnder(state.texts, path),
+  }
 }
 
 // ---- Discovery sessions ---------------------------------------------------------------------------
@@ -315,13 +488,25 @@ export function toggleAnswerFlag(
 
 // ---- Issues and saving ----------------------------------------------------------------------------
 
+// The draft on top of the latest load, with each opportunity's cached score put back by id. A score the
+// draft's inputs have since changed is left as it was: the recompute on the next load compares its
+// inputsHash and replaces it, exactly as it does for every other cached result.
 export function mergedEngagement(state: EngagementFormState): Engagement {
-  return { ...state.saved, ...state.draft }
+  const cached = new Map(state.saved.opportunities.map((opportunity) => [opportunity.id, opportunity.scoring]))
+  return {
+    ...state.saved,
+    ...state.draft,
+    // An opportunity added in this draft has no cache yet, and the schema holds the field as null
+    // rather than absent.
+    opportunities: state.draft.opportunities.map((opportunity) => ({ ...opportunity, scoring: cached.get(opportunity.id) ?? null })),
+  }
 }
 
 export function formIssues(state: EngagementFormState): FormIssue[] {
   const typed = textIssues(state.texts, (path) => OPTIONAL_NUMBER.test(path))
-  return withTextIssuesFirst(typed, schemaIssues(EngagementSchema.safeParse(mergedEngagement(state)).error))
+  const schema = schemaIssues(EngagementSchema.safeParse(mergedEngagement(state)).error)
+  // References the schema leaves to the engines, which this editor refuses to write.
+  return withTextIssuesFirst(typed, [...schema, ...referenceIssues(state.draft.processes, state.draft.opportunities)])
 }
 
 // Every path the screen shows issues at. The every-field render test holds the tabs to exactly this set.
@@ -334,6 +519,7 @@ export function locatedPaths(draft: EngagementEdits): Set<string> {
     'nextAction.due',
     ...LIST_PATHS,
     ...draft.contacts.flatMap((_, index) => CONTACT_FIELDS.map((field) => `contacts.${index}.${field}`)),
+    ...draft.company.detectedStack.flatMap((_, index) => DETECTED_FIELDS.map((field) => `company.detectedStack.${index}.${field}`)),
     ...items('tags', draft.tags),
     ...items('company.statedTools', draft.company.statedTools),
     ...items('company.constraints.compliance', draft.company.constraints.compliance),
@@ -345,10 +531,38 @@ export function locatedPaths(draft: EngagementEdits): Set<string> {
       // An answer shows on one row, so everything about it is shown there.
       ...items(`discovery.${index}.answers`, session.answers),
     ]),
+    'processes',
+    ...draft.processes.flatMap((process, index) => {
+      const at = (field: string) => `processes.${index}.${field}`
+      return [
+        ...PROCESS_FIELDS.map(at),
+        at('steps'),
+        ...process.steps.flatMap((_, stepIndex) => STEP_FIELDS.map((field) => at(`steps.${stepIndex}.${field}`))),
+        at('systemsTouched'),
+        ...items(at('systemsTouched'), process.systemsTouched),
+        at('painPoints'),
+        ...items(at('painPoints'), process.painPoints),
+      ]
+    }),
+    'opportunities',
+    ...draft.opportunities.flatMap((opportunity, index) => {
+      const at = (field: string) => `opportunities.${index}.${field}`
+      const effort = opportunity.effortInputs
+      return [
+        ...OPPORTUNITY_FIELDS.map(at),
+        ...EFFORT_FIELDS.map((field) => at(`effortInputs.${field}`)),
+        at('effortInputs.integrations'),
+        ...effort.integrations.flatMap((_, k) => INTEGRATION_FIELDS.map((field) => at(`effortInputs.integrations.${k}.${field}`))),
+        at('effortInputs.complianceFlags'),
+        ...items(at('effortInputs.complianceFlags'), effort.complianceFlags),
+      ]
+    }),
   ])
 }
 
 // An answer's row shows everything about that answer, so an issue anywhere under it is located there.
+// A rule about part of a traced figure is not: TracedInput shows only what its own draft refuses, so
+// such an issue is listed under Other problems rather than pointed at a control that would not show it.
 export function locatesIssue(draft: EngagementEdits, path: string): boolean {
   const located = locatedPaths(draft)
   if (located.has(path)) return true
@@ -366,6 +580,8 @@ export function tabOf(path: string): EngagementTab | null {
   if (path.startsWith('company.')) return 'company'
   if (path === 'contacts' || path.startsWith('contacts.')) return 'contacts'
   if (path === 'discovery' || path.startsWith('discovery.')) return 'discovery'
+  if (path === 'processes' || path.startsWith('processes.')) return 'processes'
+  if (path === 'opportunities' || path.startsWith('opportunities.')) return 'opportunities'
   return null
 }
 
@@ -391,7 +607,7 @@ export function engagementFormView(state: EngagementFormState, update: Update) {
   const issues = formIssues(state)
   const byPath = issuesByPath(issues)
   const at = (path: string) => valueAt(state.draft, path)
-  const tabIssues: Record<EngagementTab, number> = { overview: 0, company: 0, contacts: 0, discovery: 0 }
+  const tabIssues: Record<EngagementTab, number> = { overview: 0, company: 0, contacts: 0, discovery: 0, processes: 0, opportunities: 0 }
   for (const issue of issues) {
     const tab = tabOf(issue.path)
     if (tab !== null) tabIssues[tab]++
@@ -440,6 +656,23 @@ export function engagementFormView(state: EngagementFormState, update: Update) {
       const id = crypto.randomUUID()
       update((current) => addContact(current, id))
     },
+    applySignals: (found: readonly DetectedTool[]) => update((current) => applySignals(current, found)),
+    removeTool: (index: number) => update((current) => removeTool(current, index)),
+    addProcess: (process: Process) => update((current) => addProcess(current, process)),
+    removeProcess: (index: number) => update((current) => removeProcess(current, index)),
+    addStep: (index: number) => {
+      // Made outside the state update, which React may run twice.
+      const id = crypto.randomUUID()
+      update((current) => addStep(current, index, id))
+    },
+    removeStep: (index: number, stepIndex: number) => update((current) => removeStep(current, index, stepIndex)),
+    moveStep: (index: number, stepIndex: number, offset: -1 | 1) => update((current) => moveStep(current, index, stepIndex, offset)),
+    addOpportunity: (opportunity: DraftOpportunity) => update((current) => addOpportunity(current, opportunity)),
+    removeOpportunity: (index: number) => update((current) => removeOpportunity(current, index)),
+    toggleProcessLink: (index: number, processId: string, on: boolean) => update((current) => toggleProcessLink(current, index, processId, on)),
+    togglePatternLink: (index: number, patternId: string, on: boolean) => update((current) => togglePatternLink(current, index, patternId, on)),
+    addIntegration: (index: number) => update((current) => addIntegration(current, index)),
+    removeIntegration: (index: number, integrationIndex: number) => update((current) => removeIntegration(current, index, integrationIndex)),
     addSession: (session: DiscoverySession) => update((current) => addSession(current, session)),
     removeSession: (index: number) => update((current) => removeSession(current, index)),
     setAttendees: (index: number, attendees: readonly string[]) => update((current) => setAttendees(current, index, attendees)),

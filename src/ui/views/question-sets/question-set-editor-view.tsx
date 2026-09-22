@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import { withQuestionSet } from '../../../hooks/question-set-library'
 import { showsChoices, showsUnit, useQuestionSetForm, type QuestionSetFormView } from '../../../hooks/use-question-set-form'
 import type { ActionResult, BootedStore } from '../../../hooks/use-store'
@@ -6,60 +6,13 @@ import { DiscoverySessionSchema, MAPPABLE_PATHS, MAPPING_TARGETS, type Question,
 import type { Library, Pattern } from '../../../schema/library'
 import { fieldDescriptionId } from '../../primitives/field'
 import { hrefFor } from '../../shell/router'
-import { ChoiceField, FlagField, FormList, FormSection, NumberField, OtherProblems, RowActions, SaveBar, TextField } from '../form-controls'
+import { CheckboxGroup, ChoiceField, FlagField, FormList, FormSection, NumberField, OtherProblems, RowActions, SaveBar, TextField } from '../form-controls'
 import { ConditionEditor } from './condition-editor'
 
 type LoadedStore = Extract<BootedStore, { phase: 'loaded' }>
 
 const SESSION_KINDS = DiscoverySessionSchema.shape.kind.options
 const QUESTION_KINDS = ['text', 'number', 'duration', 'choice', 'multi', 'boolean'] as const
-
-// A group of checkboxes picked from a list, carrying the list's path so its issues show under it.
-function CheckboxGroup({
-  form,
-  path,
-  label,
-  hint,
-  options,
-  onToggle,
-}: {
-  form: QuestionSetFormView
-  path: string
-  label: string
-  hint: string
-  options: readonly { value: string; label: string; checked: boolean }[]
-  onToggle: (value: string, on: boolean) => void
-}) {
-  const id = useId()
-  const issues = form.issuesAt(path)
-  return (
-    <div className="grid grid-cols-[11rem_minmax(0,1fr)] items-start gap-x-3 py-1">
-      <span id={`${id}-label`} className="pt-1 text-sm text-muted">
-        {label}
-      </span>
-      <div role="group" aria-labelledby={`${id}-label`} aria-describedby={fieldDescriptionId(id)} data-config-path={path} className="min-w-0">
-        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1">
-          {options.map((option) => (
-            <label key={option.value} className="flex items-center gap-1.5 text-sm">
-              <input type="checkbox" checked={option.checked} onChange={(event) => onToggle(option.value, event.target.checked)} />
-              {option.label}
-            </label>
-          ))}
-        </div>
-        <div id={fieldDescriptionId(id)} className="text-xs">
-          <p className="pt-0.5 text-muted">{hint}</p>
-          {issues.length === 0 ? null : (
-            <ul role="alert" className="pt-0.5 text-danger">
-              {issues.map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function mappableFor(question: Question): string[] {
   return MAPPABLE_PATHS.filter((path) => MAPPING_TARGETS[path].kinds.includes(question.kind))

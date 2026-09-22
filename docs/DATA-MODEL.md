@@ -204,6 +204,7 @@ any other malformed one. Within an engagement each path is prefixed, as in
 | No tag appears twice | `tags.<i>`, on the later one |
 | `nextAction.text` is not blank | `nextAction.text` |
 | `nextAction.due`, when present, is a real calendar date written `YYYY-MM-DD` | `nextAction.due` |
+| Each detected tool has a name and a category, and no name appears twice | `detectedStack.<i>.name`, `detectedStack.<i>.category`, `name` on the later one for a repeat |
 
 Why:
 
@@ -221,6 +222,10 @@ Why:
   feed signal extraction, and each compliance requirement adds 3 effort points
   (ENGINES §1.2) to every opportunity it reaches, so a blank or repeated entry
   would count for nothing.
+- **Named, distinct detected tools.** Merging a fresh signal extraction into the
+  stack keys on the tool's name (ENGINES §6), so a repeat would hide one entry
+  behind the other, and confirming either would leave the same name both
+  confirmed and not.
 
 ## Discovery
 
@@ -338,6 +343,11 @@ what it is recorded in:
 
 A money figure is recorded in the company's currency unless another is chosen.
 
+The `process.*` paths do not land on the record as an answer is given. A process
+is started from a session on the Processes tab, which carries the recorded
+figures over whole, keeping their source, note and link back to the answer
+(ARCHITECTURE, Processes).
+
 ### Discovery validation
 
 `QuestionSetSchema`, `AnswerSchema`, `DiscoverySessionSchema` and
@@ -400,8 +410,8 @@ readable ids so a session names what it ran:
   else. A seed is an ordinary Library record once written: editing or deleting it
   is allowed, and nothing puts it back unless asked.
 - Between them they use every path in the mapping table at least once, so a
-  session fills the Company record it can and records the rest for process
-  mapping.
+  session fills the Company record it can and records the rest, which a process
+  started from the session carries over.
 
 ## Process
 
@@ -443,6 +453,38 @@ interface ProcessStep {
 }
 ```
 
+### Process validation
+
+`ProcessSchema` and `EngagementSchema` enforce these rules on top of the types
+above, for the reason given under Company, Validation. Within an engagement each
+path is prefixed, as in `processes.0.steps.1.action`.
+
+| Rule | Issue path |
+|---|---|
+| A process's name is not blank | `name` |
+| A step's `action` is not blank | `steps.<i>.action` |
+| A step's `system`, when present, is not blank | `steps.<i>.system` |
+| A step's `waitTimeMinutes`, when present, is at least 0 | `steps.<i>.waitTimeMinutes` |
+| Each system touched and each pain point is not blank, and none appears twice | `systemsTouched.<i>`, `painPoints.<i>`, on the later one for a repeat |
+| `errorRatePercent`, when present, is at most 100 | `errorProfile.errorRatePercent.value` |
+| Process ids are unique in the engagement | `processes.<i>.id`, on the later record |
+
+Why:
+
+- **A name and an action.** Every table, opportunity link and document names the
+  process, and a step is read by what it does.
+- **No blank system, no negative wait.** Absent is the empty value, so a blank
+  `system` is refused like any other malformed one, and a negative wait would
+  shorten the process it is part of.
+- **Distinct systems and pain points.** Lists are filtered, counted and printed,
+  so a blank entry stands for nothing and a repeat counts twice.
+- **An error rate is a share.** Scoring divides it by 100 (ENGINES §1.1), so past
+  100 it would claim more failures than there are runs and inflate the error
+  value. The field refuses it on entry (TracedInput's maximum); this rule is the
+  backstop for data that arrives another way. Its issue is listed under Other
+  problems, since TracedInput shows only what its own text refuses.
+- **Unique ids.** An opportunity links to a process by id, so a repeat would make
+  one link name two records.
 ## Opportunity
 
 ```ts
@@ -483,6 +525,50 @@ and lives on `ProjectScope`. Clients buy projects, not line items.
 **There is no `selected` flag on Opportunity.** `ProjectScope.selectedOpportunityIds`
 is the only record of what is in scope. A second record of it could disagree with
 the first and price a different set from the one shown.
+
+### Opportunity validation
+
+`OpportunitySchema`, `EffortInputsSchema` and `EngagementSchema` enforce these
+rules on top of the types above. `approvalSteps` being a whole number, 0 or more,
+is enforced by its type.
+
+| Rule | Issue path |
+|---|---|
+| An opportunity's title is not blank | `title` |
+| No process is linked twice, and no pattern is linked twice | `processIds`, `patternIds`, on the list, the message naming the id |
+| `primaryPatternId`, when set, is one of `patternIds` | `primaryPatternId` |
+| Each integration's name is not blank | `effortInputs.integrations.<i>.name` |
+| Each compliance flag is not blank, and none appears twice | `effortInputs.complianceFlags.<i>`, on the later one for a repeat |
+| `automatablePercent` and `errorReductionPercent` are at most 100 | `automatablePercent.value`, `errorReductionPercent.value` |
+| Opportunity ids are unique in the engagement | `opportunities.<i>.id`, on the later record |
+
+Why:
+
+- **A title.** It heads the ranked table, the scope and every document the
+  opportunity reaches.
+- **A link is made once.** Scoring sums the value of each linked process and the
+  base hours of each linked pattern (ENGINES §1.1, §1.2), so a repeat would count
+  one of them twice.
+- **The primary pattern is a linked one.** Estimation calibrates by the primary
+  pattern alone (ENGINES §2) while scoring costs the linked ones, so a primary
+  outside that list would calibrate hours no pattern here contributed.
+- **Named integrations, distinct compliance flags.** Each integration and each
+  flag adds effort points (ENGINES §1.2), so an unnamed one adds hours nobody can
+  account for and a repeated flag counts twice.
+- **A share is at most 100.** Both are divided by 100 and multiplied into a
+  client-facing figure, so past their whole they would recover more work, or
+  prevent more errors, than there is. As for the error rate, the field refuses it
+  on entry and this rule is the backstop, listed under Other problems.
+- **Unique ids.** The scope selects an opportunity by id, and the engagement form
+  puts each cached score back by id.
+
+**References the engines tolerate are not schema rules.** An opportunity that
+names no process, or a process the engagement does not have, is handled by
+scoring (`NO_PROCESSES`, `MISSING_PROCESS`): it contributes nothing and warns. A
+schema error would push the whole engagement out of the app on import, so the
+editor refuses to write one instead, as it does for a condition naming a question
+outside its set. The same goes for a process an opportunity is about, and an
+opportunity in the scope being priced, which the editor will not remove.
 
 ## Blueprint
 
@@ -930,6 +1016,10 @@ Version 7 (`v6-to-v7.ts`) only advances the version. It adds `Question.unit`,
 which no v6 question has, the discovery rules (Discovery validation), and the
 rule that stated tools and compliance requirements are neither blank nor
 repeated. A v6 record that breaks one stays as stored and fails with its issue
+path.
+Version 8 (`v7-to-v8.ts`) only advances the version. It adds the process,
+opportunity and detected-tool rules (Process, Opportunity and Company
+validation). A v7 record that breaks one stays as stored and fails with its issue
 path.
 `runMigrations` never writes. Storage writes the result back atomically and
 stamps `Meta.lastMigratedAt` only once it returns. An optional third argument,

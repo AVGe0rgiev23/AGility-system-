@@ -18,6 +18,14 @@ function valueBoxText(html: string): string {
 }
 
 describe('TracedInput', () => {
+  it('takes a maximum on a field that is not money, and on a money field never', () => {
+    const share: TracedValue = { value: 70, unit: 'percent', source: 'estimated' }
+    const html = renderToStaticMarkup(<TracedInput label="Automatable" value={share} unit="percent" max={100} required onChange={ignore} />)
+    expect(valueBoxText(html)).toBe('70')
+    // @ts-expect-error -- a bound belongs to a share, so a money field takes none
+    renderToStaticMarkup(<TracedInput label="Cost per error" value={null} currency="EUR" max={100} onChange={ignore} />)
+  })
+
   it('offers a currency only on a money field, with the unit after it', () => {
     const money = renderToStaticMarkup(<TracedInput label="Blended hourly cost" value={null} currency="GBP" per="hour" onChange={ignore} />)
     expect(money).toContain('aria-label="Blended hourly cost currency"')

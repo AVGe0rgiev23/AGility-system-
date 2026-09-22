@@ -8,6 +8,10 @@ import { OtherProblems, SaveBar } from '../form-controls'
 import { CompanyTab } from './company-tab'
 import { ContactsTab } from './contacts-tab'
 import { DiscoveryTab } from './discovery-tab'
+import { OpportunitiesTab } from './opportunities-tab'
+import { OpportunityEditor, type PatternChoice } from './opportunity-editor'
+import { ProcessEditor } from './process-editor'
+import { ProcessesTab } from './processes-tab'
 import { SessionRunner } from './session-runner'
 import { OverviewTab, type Deletion } from './overview-tab'
 
@@ -26,8 +30,8 @@ export const ENGAGEMENT_TABS: readonly TabDefinition[] = [
   { id: 'company', label: 'Company' },
   { id: 'contacts', label: 'Contacts' },
   { id: 'discovery', label: 'Discovery' },
-  { id: 'processes', label: 'Processes', placeholder: 'Process mapping is built in Stage 1, task 8.' },
-  { id: 'opportunities', label: 'Opportunities', placeholder: 'Opportunity capture is built in Stage 1, task 9, and scoring in Stage 2, task 10.' },
+  { id: 'processes', label: 'Processes' },
+  { id: 'opportunities', label: 'Opportunities' },
   { id: 'blueprints', label: 'Blueprints', placeholder: 'The blueprint editor and its diagram are built in Stage 4, tasks 1 and 2.' },
   { id: 'scope', label: 'Scope', placeholder: 'The scope builder is built in Stage 2, task 11.' },
   { id: 'documents', label: 'Documents', placeholder: 'Teardowns, proposals and SOWs are built in Stage 3, tasks 4 to 8.' },
@@ -35,15 +39,17 @@ export const ENGAGEMENT_TABS: readonly TabDefinition[] = [
   { id: 'notes', label: 'Notes', placeholder: 'Editing engagement notes is not yet in BUILD-PLAN.' },
 ]
 
+// Every tab whose issues the form model counts. A tab left out here would show no count at all rather
+// than a wrong one, so it is listed against the record the form holds.
 function isFormTab(id: string): id is EngagementTab {
-  return id === 'overview' || id === 'company' || id === 'contacts' || id === 'discovery'
+  return id === 'overview' || id === 'company' || id === 'contacts' || id === 'discovery' || id === 'processes' || id === 'opportunities'
 }
 
 export interface EngagementScreenProps {
   form: EngagementFormView
   // As addressed; null is the default tab.
   tab: string | null
-  // One record inside the tab, as addressed: a discovery session.
+  // One record inside the tab, as addressed: a discovery session, a process or an opportunity.
   item: string | null
   saving: boolean
   saveError: string | null
@@ -53,6 +59,8 @@ export interface EngagementScreenProps {
   industries: readonly string[] | null
   // Null when the stored Library is unusable.
   questionSets: readonly QuestionSet[] | null
+  // Null when the stored Library is unusable, so no pattern can be named.
+  patterns: readonly PatternChoice[] | null
 }
 
 function TabNav({ form, active }: { form: EngagementFormView; active: string | undefined }) {
@@ -86,7 +94,7 @@ function TabNav({ form, active }: { form: EngagementFormView; active: string | u
 }
 
 // The screen, given everything it shows. EngagementDetail holds the state; this only renders it.
-export function EngagementScreen({ form, tab, item, saving, saveError, onSave, deletion, industries, questionSets }: EngagementScreenProps) {
+export function EngagementScreen({ form, tab, item, saving, saveError, onSave, deletion, industries, questionSets, patterns }: EngagementScreenProps) {
   const { saved } = form
   const active = ENGAGEMENT_TABS.find((candidate) => candidate.id === (tab ?? 'overview'))
 
@@ -128,7 +136,7 @@ export function EngagementScreen({ form, tab, item, saving, saveError, onSave, d
         ) : active.id === 'overview' ? (
           <OverviewTab form={form} deletion={deletion} />
         ) : active.id === 'company' ? (
-          <CompanyTab form={form} industries={industries} />
+          <CompanyTab form={form} industries={industries} questionSets={questionSets} patterns={patterns} />
         ) : active.id === 'contacts' ? (
           <ContactsTab form={form} />
         ) : active.id === 'discovery' ? (
@@ -137,6 +145,10 @@ export function EngagementScreen({ form, tab, item, saving, saveError, onSave, d
           ) : (
             <SessionRunner form={form} sessionId={item} questionSets={questionSets} />
           )
+        ) : active.id === 'processes' ? (
+          item === null ? <ProcessesTab form={form} questionSets={questionSets} /> : <ProcessEditor form={form} processId={item} />
+        ) : active.id === 'opportunities' ? (
+          item === null ? <OpportunitiesTab form={form} patterns={patterns} /> : <OpportunityEditor form={form} opportunityId={item} patterns={patterns} />
         ) : null}
       </div>
     </section>
@@ -154,9 +166,10 @@ interface EngagementDetailProps {
   handle: Pick<StoreHandle, 'saveEngagement' | 'deleteEngagement'>
   industries: readonly string[] | null
   questionSets: readonly QuestionSet[] | null
+  patterns: readonly PatternChoice[] | null
 }
 
-function EngagementDetail({ engagement, tab, item, handle, industries, questionSets }: EngagementDetailProps) {
+function EngagementDetail({ engagement, tab, item, handle, industries, questionSets, patterns }: EngagementDetailProps) {
   const form = useEngagementForm(engagement)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -194,6 +207,7 @@ function EngagementDetail({ engagement, tab, item, handle, industries, questionS
       item={item}
       industries={industries}
       questionSets={questionSets}
+      patterns={patterns}
       saving={saving}
       saveError={saveError}
       onSave={() => void save()}
@@ -264,6 +278,7 @@ export function EngagementView({ loaded, id, tab, item, handle }: EngagementView
       handle={handle}
       industries={loaded.load.store.config?.industries ?? null}
       questionSets={loaded.load.store.library?.questionSets ?? null}
+      patterns={loaded.load.store.library?.patterns ?? null}
     />
   )
 }

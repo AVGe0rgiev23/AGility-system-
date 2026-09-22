@@ -777,3 +777,42 @@ set and candidate patterns.
 Output is **suggestions with visible evidence, never conclusions**. Every
 `DetectedTool` starts with `confirmed: false` and only counts once Alex confirms
 it.
+
+### As built
+
+- **The rule tables are constants in code** (`signal-rules.ts`), as the literal
+  above shows, not Library data. A `RegExp` cannot survive the JSON export every
+  record round-trips through, and the rules encode the matching itself rather
+  than anything tuned per client. There are 64 tool rules across the nine
+  categories, in a fixed order, so the same text always gives the same list in
+  the same order.
+- **Patterns are distinctive strings**: script hosts, domains, measurement ids, or
+  product names that are not ordinary words. Where a product name is a common word
+  (Front, Square, Wave, Drift, Crisp, Sage, Segment, Plausible) only its host
+  counts, so prose about a wave is not a detected tool. No pattern carries the `g`
+  or `y` flag, whose `lastIndex` would make a second call over the same text
+  differ, and none nests a quantifier, so matching is linear in the text.
+- **Evidence** is the text the first matching pattern of a rule matched, cut to 80
+  UTF-16 units to fit `DetectedTool.evidence`, and cut between characters so a
+  surrogate pair is never split.
+- **`extractSignals(text)`** returns `{ tools, pains }`, and nothing for empty
+  text. A tool's confidence is its rule's, as in the literal above, and every rule
+  is currently `high`. A rule's patterns mix hosts and product names, so one
+  confidence cannot say which kind matched; the evidence shown beside it does, and
+  nothing counts until it is confirmed. Telling the two apart would need a
+  confidence per pattern, which changes the rule shape above.
+- **`mergeDetectedTools(existing, found)`** adds the names the stack does not
+  hold, keyed on the exact name as the schema's uniqueness rule is (DATA-MODEL,
+  Company, Validation). It never touches an entry already there, so re-running
+  cannot un-confirm a tool or overwrite the evidence it was confirmed on. A name
+  repeated within `found` is added once, and it returns the same array when
+  nothing is new.
+- **Pain signals** are the five above, each written in the spellings the phrase
+  appears in, including the curly apostrophe a pasted page carries. Each names the
+  seeded question sets worth running and candidate patterns by the `pat-<slug>`
+  ids the pattern seeds use (BUILD-PLAN, Stage 2, task 9). They are output only:
+  the record has no place for them.
+- **Tests:** one example per rule, so a mis-escaped pattern that can never match
+  fails the suite; properties for determinism and for a detection surviving added
+  text; and a large-text run guarded by the test timeout, since lint bans the
+  clock in every file under `engines/`.

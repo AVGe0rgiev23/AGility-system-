@@ -16,9 +16,10 @@ import { TracedValueSchema, type Currency, type Source, type TracedValue } from 
 //   never formatted output, so any stored value can be edited and read back unchanged.
 
 export type TracedField =
-  | { unit: string; currency?: undefined; per?: undefined }
+  // `max` bounds a share, such as a percent: past its whole it would inflate whatever it feeds.
+  | { unit: string; max?: number; currency?: undefined; per?: undefined }
   // A money field: its unit is the currency code, or `<code>/<per>`, e.g. 'EUR/hour'.
-  | { currency: Currency; per?: string; unit?: undefined }
+  | { currency: Currency; per?: string; unit?: undefined; max?: undefined }
 
 export interface TracedDraft {
   text: string
@@ -33,6 +34,10 @@ export const AMBIGUOUS_NUMBER =
 export const NOT_A_NUMBER = 'Not a number: use digits with one decimal separator, as in 1200.50 or 1200,50'
 export const VALUE_REQUIRED = 'A value is required'
 export const SOURCE_REQUIRED = 'Choose where this figure comes from'
+
+export function aboveMaximum(max: number): string {
+  return `At most ${String(max)}`
+}
 
 // `warning` is set when the text was read one way and could have been meant another. The number
 // is accepted all the same: the warning is shown beside it and never blocks.
@@ -104,8 +109,9 @@ export function assembleDraft(draft: TracedDraft, field: TracedField, previous: 
   if (parsed.kind === 'empty') return required ? { kind: 'invalid', issues: [VALUE_REQUIRED] } : { kind: 'empty' }
   const issues: string[] = []
   if (parsed.kind === 'invalid') issues.push(parsed.message)
+  else if (parsed.kind === 'number' && field.max !== undefined && parsed.value > field.max) issues.push(aboveMaximum(field.max))
   if (draft.source === null) issues.push(SOURCE_REQUIRED)
-  if (parsed.kind !== 'number' || draft.source === null) return { kind: 'invalid', issues }
+  if (parsed.kind !== 'number' || draft.source === null || issues.length > 0) return { kind: 'invalid', issues }
 
   const candidate: TracedValue = { value: parsed.value, unit: unitFor(field, draft.currency), source: draft.source }
   if (field.currency !== undefined) candidate.currency = draft.currency ?? field.currency

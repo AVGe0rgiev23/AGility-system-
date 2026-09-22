@@ -7,6 +7,7 @@ import { migrateV3ToV4 } from './v3-to-v4'
 import { migrateV4ToV5 } from './v4-to-v5'
 import { migrateV5ToV6 } from './v5-to-v6'
 import { migrateV6ToV7 } from './v6-to-v7'
+import { migrateV7ToV8 } from './v7-to-v8'
 
 // Takes the whole store at version N and returns it at N + 1, including setting
 // meta.schemaVersion to N + 1. One file per bump in this folder, registered below.
@@ -20,6 +21,7 @@ export const MIGRATIONS: Readonly<Record<number, MigrateFn>> = {
   4: migrateV4ToV5,
   5: migrateV5ToV6,
   6: migrateV6ToV7,
+  7: migrateV7ToV8,
 }
 
 export interface MigrationChain {
