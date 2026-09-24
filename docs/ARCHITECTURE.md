@@ -483,15 +483,36 @@ default. Its editing model is `hooks/use-engagement-form.ts`.
     many. That is the editor's rule, not the schema's: the engines already
     tolerate an opportunity naming a process that is gone (`MISSING_PROCESS`),
     and a schema error would push a whole engagement out of the app on import.
-- **Opportunities:** a table of what could be automated, each row naming the
-  processes it is about, its linked patterns with the primary one, the two shares
-  it claims with their sources, and its integrations. Each opens at
-  `#/engagements/<id>/opportunities/<opportunityId>`.
+- **Opportunities:** the ranking first, then a table of what could be automated,
+  each row naming the processes it is about, its linked patterns with the primary
+  one, the two shares it claims with their sources, and its integrations. Each
+  opens at `#/engagements/<id>/opportunities/<opportunityId>`.
+  - **The ranking** (Stage 2, task 10; rules in `hooks/opportunity-ranking.ts`)
+    scores every opportunity live from the unsaved draft with `scoreOpportunity`,
+    so an edit on any tab moves it at once. After a Save it equals the cached
+    scores, being the same engine on the same inputs. A table ranks by priority
+    index: annual value, hours saved, uncalibrated build hours, both scores,
+    confidence, priority, quadrant and warnings, every figure carrying the
+    result's confidence. Its working opens under the row: each breakdown term with
+    its source and formula, the four ranking terms marked internal, then the
+    warnings. `weightedValue` has no row here either. A quadrant plot, generated
+    SVG, sits under the table; dots at the same scores are one dot naming each
+    rank, and its label names every opportunity by quadrant.
+  - `#/engagements/<id>/scoring/<opportunityId>` is the same tab with that
+    opportunity's working open. The open row is read from the address, not held
+    in state, so it can be bookmarked and closing it is going back to the tab.
+    An id with no opportunity says so.
+  - An opportunity is not scored while an issue or pending text sits under its
+    own paths, under a process it names, or on `company.blendedHourlyCost`: its
+    row says how many problems, sorts last and has no dot. A linked pattern the
+    Library lacks is not a problem; the engine scores around it and warns
+    (`MISSING_PATTERN`). When the stored Config or Library cannot be used at all,
+    nothing is scored and one notice says which, since a score without ceilings,
+    or with every pattern missing, would look real and not be.
   - It is created with every required figure valid and each of the three effort
-    factors chosen, and is written with `scoring: null`. Nothing on the tab
-    computes a score, and it says so. The score is filled in by the recompute on
-    the next load, like every other cached result, so it is present after the
-    first reload whatever the form wrote.
+    factors chosen, and is written with `scoring: null`. The cached score is
+    filled in by the recompute on the next load, like every other cached result,
+    so it is present after the first reload whatever the form wrote.
   - The pattern list is the Library's (Patterns, below). The primary pattern is
     chosen from the linked ones only, and unlinking it clears it. A pattern the
     Library no longer holds, and a process the engagement no longer has, are
