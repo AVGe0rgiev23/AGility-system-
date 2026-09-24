@@ -9,6 +9,7 @@ import {
   quadrantPoints,
   quadrantSummary,
   rankOpportunities,
+  rankingFor,
   type RankedOpportunity,
   type RankingInput,
   type ScoredOpportunityRow,
@@ -110,6 +111,24 @@ describe('rankOpportunities', () => {
     // With none left it falls back on the default hours and loses the no-pattern confidence points.
     expect(none?.result.warnings.map((warning) => warning.code)).toEqual(expect.arrayContaining(['MISSING_PATTERN', 'NO_PATTERN']))
     expect(none?.result.confidence).toBeLessThan(partly?.result.confidence ?? 0)
+  })
+})
+
+describe('rankingFor', () => {
+  const context = { engagement: withOpportunities({ a: 70 }), issues: [], pending: [], now: NOW }
+
+  it('scores nothing, and says which, when the Config or the Library cannot be used', () => {
+    const reason = (ranking: ReturnType<typeof rankingFor>) => (ranking.kind === 'unavailable' ? ranking.reason : null)
+    expect(reason(rankingFor({ ...context, patterns: PATTERNS, config: null }))).toContain('Config does not validate')
+    expect(reason(rankingFor({ ...context, patterns: null, config: defaultConfig() }))).toContain('Library does not validate')
+  })
+
+  it('ranks in the agency currency when both can be used, even with no pattern in the Library', () => {
+    const ranking = rankingFor({ ...context, patterns: [], config: defaultConfig() })
+    expect(ranking.kind).toBe('ranked')
+    if (ranking.kind !== 'ranked') return
+    expect(ranking.currency).toBe('EUR')
+    expect(ranking.rows.map((row) => row.kind)).toEqual(['scored'])
   })
 })
 

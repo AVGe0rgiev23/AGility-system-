@@ -70,6 +70,31 @@ export function rankOpportunities(input: RankingInput): RankedOpportunity[] {
   return [...ranked, ...blocked]
 }
 
+export type Ranking =
+  // Nothing is scored, and the reason says which stored record cannot be used.
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'ranked'; rows: RankedOpportunity[]; currency: Config['agencyCurrency'] }
+
+export interface RankingContext extends Omit<RankingInput, 'patterns' | 'config'> {
+  // Each null when its stored record does not validate.
+  patterns: RankingInput['patterns'] | null
+  config: Config | null
+}
+
+// Scoring without the Config has no ceilings or rates, and without the Library every linked pattern
+// would count as missing: either gives a score that looks real and is not, so neither is attempted.
+// A single pattern the Library lacks is different; the engine scores around it and says so.
+export function rankingFor(context: RankingContext): Ranking {
+  const { patterns, config } = context
+  if (config === null) {
+    return { kind: 'unavailable', reason: 'the stored Config does not validate, so the scoring ceilings, multipliers and exchange rates are unknown. The store notice says why.' }
+  }
+  if (patterns === null) {
+    return { kind: 'unavailable', reason: "the stored Library does not validate, so no pattern's base hours are known and every linked pattern would count as missing. The store notice says why." }
+  }
+  return { kind: 'ranked', rows: rankOpportunities({ ...context, patterns, config }), currency: config.agencyCurrency }
+}
+
 export const QUADRANT_NAMES: Record<Quadrant, string> = {
   'quick-win': 'Quick win',
   strategic: 'Strategic',

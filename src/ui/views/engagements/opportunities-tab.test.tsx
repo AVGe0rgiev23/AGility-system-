@@ -14,7 +14,7 @@ const PATTERNS: PatternChoice[] = [
 ]
 
 function renderTab(state: EngagementFormState, patterns: PatternChoice[] | null = PATTERNS, panel: React.ReactNode = null): string {
-  return renderToStaticMarkup(<OpportunitiesTabScreen form={engagementFormView(state, ignore)} patterns={patterns} panel={panel} onNew={ignore} />)
+  return renderToStaticMarkup(<OpportunitiesTabScreen form={engagementFormView(state, ignore)} patterns={patterns} scoring={null} panel={panel} onNew={ignore} />)
 }
 
 function renderPanel(draft: NewOpportunityDraft, patch: { processes?: ProcessChoice[]; issues?: { path: string; message: string }[] } = {}): string {
@@ -54,10 +54,12 @@ describe('OpportunitiesTabScreen', () => {
     expect(renderTab(stale)).toContain('missing: proc-gone')
   })
 
-  it('says that scoring is not here, and shows none', () => {
-    const html = renderTab(initialEngagementForm(engagement()))
-    expect(html).toContain('Scoring is built in Stage 2, task 10.')
-    expect(html).not.toMatch(/priority|quadrant|valueScore/i)
+  it('shows the ranking it is given above the capture table', () => {
+    const html = renderToStaticMarkup(
+      <OpportunitiesTabScreen form={engagementFormView(initialEngagementForm(engagement()), ignore)} patterns={PATTERNS} scoring={<p>the ranking</p>} panel={null} onNew={ignore} />,
+    )
+    expect(html.indexOf('the ranking')).toBeLessThan(html.indexOf('What could be automated'))
+    expect(html).not.toContain('Scoring is built in Stage 2, task 10.')
   })
 
   it('will not remove an opportunity the scope is pricing, since the scope is the only record of that', () => {
