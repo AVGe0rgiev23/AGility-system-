@@ -34,6 +34,10 @@ function workingId(opportunityId: string): string {
   return `working-${opportunityId}`
 }
 
+function toggleId(opportunityId: string): string {
+  return `scoring-toggle-${opportunityId}`
+}
+
 function WorkingPanel({ row }: { row: RankedOpportunity }) {
   if (row.kind === 'blocked') {
     return (
@@ -94,6 +98,23 @@ function Scored({ row, figure }: { row: RankedOpportunity; figure: (result: Scor
 
 function sortBy(pick: (result: ScoringResult) => number) {
   return (row: RankedOpportunity) => (row.kind === 'scored' ? pick(row.result) : null)
+}
+
+// Beside the title rather than in a last column, so the wide table never scrolls it out of reach. It is a
+// link: the open row lives in the address, and closing it is going back to the tab.
+function WorkingToggle({ row, open, engagementId }: { row: RankedOpportunity; open: boolean; engagementId: string }) {
+  return (
+    <a
+      id={toggleId(row.opportunityId)}
+      href={hrefFor({ name: 'engagement', id: engagementId, tab: open ? 'opportunities' : 'scoring', item: open ? undefined : row.opportunityId })}
+      aria-expanded={open}
+      aria-controls={open ? workingId(row.opportunityId) : undefined}
+      aria-label={`${open ? 'Hide' : 'Show'} the working for ${row.title}`}
+      className="scroll-mt-12 text-xs text-muted underline decoration-border underline-offset-2 hover:text-fg"
+    >
+      {open ? 'Hide working' : 'Working'}
+    </a>
+  )
 }
 
 // Value score against effort score, as generated geometry. The table is the fuller equivalent; the
@@ -158,9 +179,15 @@ export function QuadrantPlot({ rows, expandedId }: { rows: readonly RankedOpport
 }
 
 export function ScoringSection({ engagementId, ranking, expandedId, changed, sort, onSort }: ScoringSectionProps) {
-  // An address naming one opportunity's working brings it into view.
+  // An address naming one opportunity's working brings its row to the top, below the sticky save bar
+  // (the toggle's scroll-mt), so the row, its focused toggle and the start of the working are all in
+  // view. The window scrolls only vertically: scrollIntoView would also slide the wide table sideways
+  // to reach the toggle in its last column, hiding the rank and the term labels.
   useEffect(() => {
-    if (expandedId !== null) document.getElementById(workingId(expandedId))?.scrollIntoView({ block: 'nearest' })
+    const toggle = expandedId === null ? null : document.getElementById(toggleId(expandedId))
+    if (toggle === null) return
+    const clearance = parseFloat(getComputedStyle(toggle).scrollMarginTop) || 0
+    window.scrollTo({ top: window.scrollY + toggle.getBoundingClientRect().top - clearance })
   }, [expandedId])
 
   const heading = (
@@ -200,6 +227,7 @@ export function ScoringSection({ engagementId, ranking, expandedId, changed, sor
               not scored: fix {row.problems} {row.problems === 1 ? 'problem' : 'problems'}
             </span>
           ) : null}
+          <WorkingToggle row={row} open={row.opportunityId === expandedId} engagementId={engagementId} />
         </span>
       ),
     },
@@ -272,24 +300,6 @@ export function ScoringSection({ engagementId, ranking, expandedId, changed, sor
         ),
       sortValue: sortBy((result) => result.warnings.length),
       firstSortDirection: 'descending',
-    },
-    {
-      id: 'working',
-      header: '',
-      cell: (row) => {
-        const open = row.opportunityId === expandedId
-        return (
-          <a
-            href={open ? collapse : hrefFor({ name: 'engagement', id: engagementId, tab: 'scoring', item: row.opportunityId })}
-            aria-expanded={open}
-            aria-controls={open ? workingId(row.opportunityId) : undefined}
-            aria-label={`${open ? 'Hide' : 'Show'} the working for ${row.title}`}
-            className="text-xs whitespace-nowrap text-muted underline decoration-border underline-offset-2 hover:text-fg"
-          >
-            {open ? 'Hide working' : 'Working'}
-          </a>
-        )
-      },
     },
   ]
 
