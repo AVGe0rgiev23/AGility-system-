@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
 import type { FormIssue } from '../../../hooks/form-paths'
+import { rankingFor } from '../../../hooks/opportunity-ranking'
 import {
   initialOpportunityDraft,
   opportunityDraftIssues,
@@ -8,6 +9,8 @@ import {
   type NewOpportunityDraft,
 } from '../../../hooks/process-rules'
 import type { EngagementFormView } from '../../../hooks/use-engagement-form'
+import type { Config } from '../../../schema/config'
+import type { Pattern } from '../../../schema/library'
 import { EffortInputsSchema } from '../../../schema/opportunity'
 import type { Currency } from '../../../schema/traced'
 import { Field, fieldDescriptionId } from '../../primitives/field'
@@ -17,6 +20,7 @@ import { hrefFor, navigate } from '../../shell/router'
 import { BUTTON, CONTROL, FormList, FormSection, PRIMARY, RowActions } from '../form-controls'
 import { FigureInput } from './figure-input'
 import type { PatternChoice } from './opportunity-editor'
+import { DEFAULT_RANKING_SORT, ScoringSection } from './scoring-section'
 
 const DATA_READINESS = EffortInputsSchema.shape.dataReadiness.options
 const VOLUME_TIERS = EffortInputsSchema.shape.volumeTier.options
@@ -198,13 +202,15 @@ export interface OpportunitiesTabProps {
   form: EngagementFormView
   // Null when the stored Library is unusable, so no pattern can be named.
   patterns: readonly PatternChoice[] | null
+  // The ranking above the capture table.
+  scoring: ReactNode
   panel: ReactNode
   onNew: () => void
 }
 
-// The opportunities captured for this engagement. Each opens in its own screen. Nothing here scores
-// them: the ranked table and the working arrive with the scoring screens (Stage 2, task 10).
-export function OpportunitiesTabScreen({ form, patterns, panel, onNew }: OpportunitiesTabProps) {
+// The opportunities captured for this engagement, ranked first and then listed for editing. Each opens
+// in its own screen.
+export function OpportunitiesTabScreen({ form, patterns, scoring, panel, onNew }: OpportunitiesTabProps) {
   const processes = form.draft.processes
   const known = patterns ?? []
   const rows: OpportunityRow[] = form.draft.opportunities.map((opportunity, index) => ({
@@ -218,73 +224,91 @@ export function OpportunitiesTabScreen({ form, patterns, panel, onNew }: Opportu
   const processName = (id: string) => processes.find((process) => process.id === id)?.name || `missing: ${id}`
 
   return (
-    <FormSection id="engagement-opportunities" title="Opportunities">
-      <FormList
-        form={form}
-        path="opportunities"
-        title="What could be automated"
-        hint="Scoring is built in Stage 2, task 10. Removing an opportunity takes effect on Save; Discard brings it back. One in the scope being priced cannot be removed."
-        addLabel="New opportunity"
-        onAdd={onNew}
-      >
-        {panel}
-        <div className="overflow-x-auto">
-          <Table
-            caption="Opportunities"
-            columns={[
-              {
-                id: 'title',
-                header: 'Opportunity',
-                cell: (row) => (
-                  <a
-                    href={hrefFor({ name: 'engagement', id: form.saved.id, tab: 'opportunities', item: row.opportunity.id })}
-                    className="text-fg underline decoration-border underline-offset-2 hover:decoration-fg"
-                  >
-                    {row.opportunity.title === '' ? `Opportunity ${row.index + 1}` : row.opportunity.title}
-                  </a>
-                ),
-              },
-              { id: 'processes', header: 'About', cell: (row) => row.opportunity.processIds.map(processName).join(', ') || <span className="text-muted">—</span> },
-              {
-                id: 'patterns',
-                header: 'Patterns',
-                cell: (row) =>
-                  row.opportunity.patternIds.length === 0 ? (
-                    <span className="text-muted">—</span>
-                  ) : (
-                    <span className="num">
-                      {row.opportunity.patternIds.length}
-                      {row.opportunity.primaryPatternId === null ? '' : `, primary ${known.find((pattern) => pattern.id === row.opportunity.primaryPatternId)?.name ?? row.opportunity.primaryPatternId}`}
-                    </span>
+    <>
+      {scoring}
+      <FormSection id="engagement-opportunities" title="Opportunities">
+        <FormList
+          form={form}
+          path="opportunities"
+          title="What could be automated"
+          hint="Removing an opportunity takes effect on Save; Discard brings it back. One in the scope being priced cannot be removed."
+          addLabel="New opportunity"
+          onAdd={onNew}
+        >
+          {panel}
+          <div className="overflow-x-auto">
+            <Table
+              caption="Opportunities"
+              columns={[
+                {
+                  id: 'title',
+                  header: 'Opportunity',
+                  cell: (row) => (
+                    <a
+                      href={hrefFor({ name: 'engagement', id: form.saved.id, tab: 'opportunities', item: row.opportunity.id })}
+                      className="text-fg underline decoration-border underline-offset-2 hover:decoration-fg"
+                    >
+                      {row.opportunity.title === '' ? `Opportunity ${row.index + 1}` : row.opportunity.title}
+                    </a>
                   ),
-              },
-              { id: 'automatable', header: 'Automatable', cell: (row) => <InlineStat traced={row.opportunity.automatablePercent} /> },
-              { id: 'reduction', header: 'Error reduction', cell: (row) => <InlineStat traced={row.opportunity.errorReductionPercent} /> },
-              { id: 'integrations', header: 'Integrations', numeric: true, cell: (row) => row.opportunity.effortInputs.integrations.length },
-              {
-                id: 'problems',
-                header: 'Problems',
-                numeric: true,
-                cell: (row) => (row.problems === 0 ? <span className="text-muted">—</span> : <span className="num text-danger">{row.problems}</span>),
-              },
-              {
-                id: 'actions',
-                header: '',
-                cell: (row) => <RowActions name={nameOf(row)} index={row.index} count={rows.length} blocked={row.block} onRemove={() => form.removeOpportunity(row.index)} />,
-              },
-            ]}
-            rows={rows}
-            rowKey={(row) => row.opportunity.id}
-            empty="No opportunities yet"
-          />
-        </div>
-      </FormList>
-    </FormSection>
+                },
+                { id: 'processes', header: 'About', cell: (row) => row.opportunity.processIds.map(processName).join(', ') || <span className="text-muted">—</span> },
+                {
+                  id: 'patterns',
+                  header: 'Patterns',
+                  cell: (row) =>
+                    row.opportunity.patternIds.length === 0 ? (
+                      <span className="text-muted">—</span>
+                    ) : (
+                      <span className="num">
+                        {row.opportunity.patternIds.length}
+                        {row.opportunity.primaryPatternId === null ? '' : `, primary ${known.find((pattern) => pattern.id === row.opportunity.primaryPatternId)?.name ?? row.opportunity.primaryPatternId}`}
+                      </span>
+                    ),
+                },
+                { id: 'automatable', header: 'Automatable', cell: (row) => <InlineStat traced={row.opportunity.automatablePercent} /> },
+                { id: 'reduction', header: 'Error reduction', cell: (row) => <InlineStat traced={row.opportunity.errorReductionPercent} /> },
+                { id: 'integrations', header: 'Integrations', numeric: true, cell: (row) => row.opportunity.effortInputs.integrations.length },
+                {
+                  id: 'problems',
+                  header: 'Problems',
+                  numeric: true,
+                  cell: (row) => (row.problems === 0 ? <span className="text-muted">—</span> : <span className="num text-danger">{row.problems}</span>),
+                },
+                {
+                  id: 'actions',
+                  header: '',
+                  cell: (row) => <RowActions name={nameOf(row)} index={row.index} count={rows.length} blocked={row.block} onRemove={() => form.removeOpportunity(row.index)} />,
+                },
+              ]}
+              rows={rows}
+              rowKey={(row) => row.opportunity.id}
+              empty="No opportunities yet"
+            />
+          </div>
+        </FormList>
+      </FormSection>
+    </>
   )
 }
 
-// Holds the new-opportunity panel; every opportunity itself lives in the engagement form.
-export function OpportunitiesTab({ form, patterns }: { form: EngagementFormView; patterns: readonly PatternChoice[] | null }) {
+export interface OpportunitiesTabContainerProps {
+  form: EngagementFormView
+  // Each null when its stored record does not validate.
+  patterns: readonly Pick<Pattern, 'id' | 'name' | 'baseHours'>[] | null
+  config: Config | null
+  // Fills computedAt on the live scores, which nothing shows.
+  now: string
+  // From the address: the opportunity whose working is open.
+  expandedId: string | null
+}
+
+// Holds the new-opportunity panel and the ranking's sort; every opportunity itself lives in the
+// engagement form, and the ranking is worked out from it on every edit.
+export function OpportunitiesTab({ form, patterns, config, now, expandedId }: OpportunitiesTabContainerProps) {
+  const [sort, setSort] = useState(DEFAULT_RANKING_SORT)
+  // Worked out on every render: a few opportunities score in well under a millisecond.
+  const ranking = rankingFor({ engagement: form.merged(), issues: form.issues, pending: form.state.pending, patterns, config, now })
   const [draft, setDraft] = useState<NewOpportunityDraft | null>(null)
   const [tried, setTried] = useState(false)
   const [pending, setPending] = useState<readonly string[]>([])
@@ -312,6 +336,7 @@ export function OpportunitiesTab({ form, patterns }: { form: EngagementFormView;
     <OpportunitiesTabScreen
       form={form}
       patterns={patterns}
+      scoring={<ScoringSection engagementId={form.saved.id} ranking={ranking} expandedId={expandedId} changed={form.changed} sort={sort} onSort={setSort} />}
       onNew={() => {
         setTried(false)
         setPending([])

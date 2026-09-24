@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { nextSort, sortRows, type SortDirection, type SortState, type SortValue } from '../table-sort'
 
 export interface Column<Row> {
@@ -24,10 +24,13 @@ export interface TableProps<Row> {
   // header is clickable.
   sort?: SortState | null
   onSort?: (next: SortState) => void
+  // A full-width row under a record, for working that belongs to it and needs more room than a cell.
+  // It sorts with its record. Null shows nothing.
+  detail?: (row: Row) => ReactNode | null
 }
 
 // Every list of records is one of these: dense rows, one rule between them, no cards.
-export function Table<Row>({ caption, columns, rows, rowKey, empty, sort = null, onSort }: TableProps<Row>) {
+export function Table<Row>({ caption, columns, rows, rowKey, empty, sort = null, onSort, detail }: TableProps<Row>) {
   const sortedBy = sort === null ? undefined : columns.find((column) => column.id === sort.columnId)
   const shown = sort === null || sortedBy?.sortValue === undefined ? rows : sortRows(rows, sortedBy.sortValue, sort.direction)
 
@@ -74,15 +77,27 @@ export function Table<Row>({ caption, columns, rows, rowKey, empty, sort = null,
             </td>
           </tr>
         ) : (
-          shown.map((row) => (
-            <tr key={rowKey(row)} className="hover:bg-surface">
-              {columns.map((column) => (
-                <td key={column.id} className={`h-7 border-b px-2 ${column.numeric === true ? 'num text-right' : 'text-left'}`}>
-                  {column.cell(row)}
-                </td>
-              ))}
-            </tr>
-          ))
+          shown.map((row) => {
+            const extra = detail?.(row) ?? null
+            return (
+              <Fragment key={rowKey(row)}>
+                <tr className="hover:bg-surface">
+                  {columns.map((column) => (
+                    <td key={column.id} className={`h-7 border-b px-2 ${column.numeric === true ? 'num text-right' : 'text-left'}`}>
+                      {column.cell(row)}
+                    </td>
+                  ))}
+                </tr>
+                {extra === null ? null : (
+                  <tr>
+                    <td colSpan={Math.max(columns.length, 1)} className="border-b bg-surface px-2 py-2">
+                      {extra}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            )
+          })
         )}
       </tbody>
     </table>

@@ -31,6 +31,8 @@ function render(state: EngagementFormState, industries: readonly string[] | null
       item={null}
       questionSets={[]}
       patterns={[]}
+      config={null}
+      now="2026-09-24T12:00:00.000Z"
       industries={industries}
     />,
   )

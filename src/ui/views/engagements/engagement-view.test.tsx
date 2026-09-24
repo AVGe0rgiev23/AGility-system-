@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { addToList, engagementFormView, initialEngagementForm, locatedPaths, setPending, setText, tabOf, type EngagementFormState } from '../../../hooks/use-engagement-form'
 import type { BootedStore } from '../../../hooks/use-store'
+import { defaultConfig } from '../../../schema/config'
 import { engagement, newEngagement, wholeStore } from '../../../schema/__fixtures__/records'
 import { describedBy, escapeHtml, renderedPaths, tagFor } from '../../__fixtures__/markup'
 import { EngagementNotFound, EngagementScreen, EngagementView, ENGAGEMENT_TABS } from './engagement-view'
@@ -11,7 +12,16 @@ const ignore = () => undefined
 
 const NO_DELETION: Deletion = { confirming: false, deleting: false, error: null, onAsk: ignore, onConfirm: ignore, onCancel: ignore }
 
-function render(state: EngagementFormState, tab: string | null = null, patch: { saving?: boolean; saveError?: string | null; deletion?: Deletion } = {}): string {
+const PATTERNS = [
+  { id: 'pat-email-triage', name: 'Email triage', baseHours: 12 },
+  { id: 'pat-crm-sync', name: 'CRM sync', baseHours: 8 },
+]
+
+function render(
+  state: EngagementFormState,
+  tab: string | null = null,
+  patch: { saving?: boolean; saveError?: string | null; deletion?: Deletion; item?: string | null } = {},
+): string {
   return renderToStaticMarkup(
     <EngagementScreen
       form={engagementFormView(state, ignore)}
@@ -20,13 +30,45 @@ function render(state: EngagementFormState, tab: string | null = null, patch: { 
       saveError={patch.saveError ?? null}
       onSave={ignore}
       deletion={patch.deletion ?? NO_DELETION}
-      item={null}
+      item={patch.item ?? null}
       questionSets={[]}
-      patterns={[]}
+      patterns={PATTERNS}
+      config={defaultConfig()}
+      now="2026-09-24T12:00:00.000Z"
       industries={['Professional Services', 'logistics']}
     />,
   )
 }
+
+describe('EngagementScreen, scoring address', () => {
+  it("opens the Opportunities tab with the named opportunity's working showing", () => {
+    const html = render(initialEngagementForm(engagement()), 'scoring', { item: 'opp-1' })
+    expect(html).toMatch(/<a href="#\/engagements\/eng-1\/opportunities" aria-current="page"/)
+    expect(html).not.toContain('href="#/engagements/eng-1/scoring"')
+    expect(html).toContain('id="working-opp-1"')
+    expect(html).toContain('aria-expanded="true"')
+    // Collapsing is going back to the tab's own address.
+    expect(html).toContain('href="#/engagements/eng-1/opportunities" aria-expanded="true"')
+  })
+
+  it('shows the tab with nothing open when no opportunity is named', () => {
+    const html = render(initialEngagementForm(engagement()), 'scoring')
+    expect(html).toContain('Ranking')
+    expect(html).not.toContain('id="working-')
+    expect(html).toContain('href="#/engagements/eng-1/scoring/opp-1" aria-expanded="false"')
+  })
+
+  it('says so when the named opportunity does not exist, with a way back', () => {
+    const html = render(initialEngagementForm(engagement()), 'scoring', { item: 'opp-gone' })
+    expect(html).toContain('This engagement has no opportunity <span class="num">opp-gone</span> to show the working for.')
+    expect(html).not.toContain('id="working-')
+  })
+
+  it('still opens the editor at the opportunities address', () => {
+    const html = render(initialEngagementForm(engagement()), 'opportunities', { item: 'opp-1' })
+    expect(html).not.toContain('Ranking')
+  })
+})
 
 describe('EngagementScreen, shell', () => {
   it('heads the page with the company and its stage, and links every section, marking the one open', () => {

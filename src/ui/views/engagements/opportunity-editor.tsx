@@ -59,7 +59,7 @@ export interface OpportunityEditorProps {
 }
 
 // One opportunity, every field of it. It is edited in the engagement's one draft, so what is typed here
-// is stored by the save bar above, like every other tab. Nothing here scores it: that is Stage 2.
+// is stored by the save bar above, like every other tab. Its score and working are on the tab's ranking.
 export function OpportunityEditor({ form, opportunityId, patterns }: OpportunityEditorProps) {
   const index = form.draft.opportunities.findIndex((opportunity) => opportunity.id === opportunityId)
   const opportunity = form.draft.opportunities[index]

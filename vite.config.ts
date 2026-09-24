@@ -16,6 +16,8 @@ export default defineConfig({
     // --maxWorkers=16, 2 with --no-file-parallelism, and 4 as two suites running at once. No pool or
     // worker setting is changed, since none was shown to matter. If it recurs, run
     // `vitest run --reporter=json --outputFile=report.json` and compare report.testResults with the
-    // files on disk to name the file that did not run.
+    // files on disk to name the file that did not run. Seen again on 2026-09-24 (stage-2-scoring):
+    // two runs short by 7 and 11 tests, with no failures, straight after working-copy files were
+    // rewritten from CRLF to LF, then 1267 in every run after. A Windows file lock is suspected, not shown.
   },
 })

@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { useEngagementForm, type EngagementFormView, type EngagementTab } from '../../../hooks/use-engagement-form'
 import type { BootedStore, StoreHandle } from '../../../hooks/use-store'
+import type { Config } from '../../../schema/config'
 import type { QuestionSet } from '../../../schema/discovery'
 import type { Engagement } from '../../../schema/engagement'
+import type { Pattern } from '../../../schema/library'
 import { hrefFor, navigate } from '../../shell/router'
 import { OtherProblems, SaveBar } from '../form-controls'
 import { CompanyTab } from './company-tab'
 import { ContactsTab } from './contacts-tab'
 import { DiscoveryTab } from './discovery-tab'
 import { OpportunitiesTab } from './opportunities-tab'
-import { OpportunityEditor, type PatternChoice } from './opportunity-editor'
+import { OpportunityEditor } from './opportunity-editor'
 import { ProcessEditor } from './process-editor'
 import { ProcessesTab } from './processes-tab'
 import { SessionRunner } from './session-runner'
@@ -59,9 +61,19 @@ export interface EngagementScreenProps {
   industries: readonly string[] | null
   // Null when the stored Library is unusable.
   questionSets: readonly QuestionSet[] | null
-  // Null when the stored Library is unusable, so no pattern can be named.
-  patterns: readonly PatternChoice[] | null
+  // Null when the stored Library is unusable, so no pattern can be named or scored.
+  patterns: readonly LibraryPattern[] | null
+  // Null when the stored Config is unusable, so nothing can be scored.
+  config: Config | null
+  // When this engagement was opened; fills computedAt on live scores, which nothing shows.
+  now: string
 }
+
+type LibraryPattern = Pick<Pattern, 'id' | 'name' | 'baseHours'>
+
+// Another address for the Opportunities tab: '#/engagements/<id>/scoring/<opportunityId>' opens it with
+// that opportunity's working showing, so the working can be bookmarked.
+const SCORING_ALIAS = 'scoring'
 
 function TabNav({ form, active }: { form: EngagementFormView; active: string | undefined }) {
   return (
@@ -94,9 +106,10 @@ function TabNav({ form, active }: { form: EngagementFormView; active: string | u
 }
 
 // The screen, given everything it shows. EngagementDetail holds the state; this only renders it.
-export function EngagementScreen({ form, tab, item, saving, saveError, onSave, deletion, industries, questionSets, patterns }: EngagementScreenProps) {
+export function EngagementScreen({ form, tab, item, saving, saveError, onSave, deletion, industries, questionSets, patterns, config, now }: EngagementScreenProps) {
   const { saved } = form
-  const active = ENGAGEMENT_TABS.find((candidate) => candidate.id === (tab ?? 'overview'))
+  const scoring = tab === SCORING_ALIAS
+  const active = ENGAGEMENT_TABS.find((candidate) => candidate.id === (scoring ? 'opportunities' : (tab ?? 'overview')))
 
   return (
     <section aria-labelledby="page-heading">
@@ -148,7 +161,11 @@ export function EngagementScreen({ form, tab, item, saving, saveError, onSave, d
         ) : active.id === 'processes' ? (
           item === null ? <ProcessesTab form={form} questionSets={questionSets} /> : <ProcessEditor form={form} processId={item} />
         ) : active.id === 'opportunities' ? (
-          item === null ? <OpportunitiesTab form={form} patterns={patterns} /> : <OpportunityEditor form={form} opportunityId={item} patterns={patterns} />
+          scoring || item === null ? (
+            <OpportunitiesTab form={form} patterns={patterns} config={config} now={now} expandedId={scoring ? item : null} />
+          ) : (
+            <OpportunityEditor form={form} opportunityId={item} patterns={patterns} />
+          )
         ) : null}
       </div>
     </section>
@@ -166,11 +183,13 @@ interface EngagementDetailProps {
   handle: Pick<StoreHandle, 'saveEngagement' | 'deleteEngagement'>
   industries: readonly string[] | null
   questionSets: readonly QuestionSet[] | null
-  patterns: readonly PatternChoice[] | null
+  patterns: readonly LibraryPattern[] | null
+  config: Config | null
 }
 
-function EngagementDetail({ engagement, tab, item, handle, industries, questionSets, patterns }: EngagementDetailProps) {
+function EngagementDetail({ engagement, tab, item, handle, industries, questionSets, patterns, config }: EngagementDetailProps) {
   const form = useEngagementForm(engagement)
+  const [now] = useState(() => new Date().toISOString())
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -208,6 +227,8 @@ function EngagementDetail({ engagement, tab, item, handle, industries, questionS
       industries={industries}
       questionSets={questionSets}
       patterns={patterns}
+      config={config}
+      now={now}
       saving={saving}
       saveError={saveError}
       onSave={() => void save()}
@@ -279,6 +300,7 @@ export function EngagementView({ loaded, id, tab, item, handle }: EngagementView
       industries={loaded.load.store.config?.industries ?? null}
       questionSets={loaded.load.store.library?.questionSets ?? null}
       patterns={loaded.load.store.library?.patterns ?? null}
+      config={loaded.load.store.config}
     />
   )
 }

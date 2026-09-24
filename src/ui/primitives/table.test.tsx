@@ -80,6 +80,40 @@ describe('Table', () => {
     expect(html.indexOf('>Solo Bakery</td>')).toBeLessThan(html.indexOf('>Acme</td>'))
   })
 
+  it('renders a detail row across every column under its record only, and keeps it with the record when sorted', () => {
+    const sortable: Column<Row>[] = [
+      { id: 'name', header: 'Company', cell: (row) => row.name },
+      { id: 'hours', header: 'Hours', numeric: true, cell: (row) => row.hours, sortValue: (row) => row.hours },
+    ]
+    const rows: Row[] = [
+      { id: 'a', name: 'Rila Logistics', hours: 42 },
+      { id: 'b', name: 'Solo Bakery', hours: 7.5 },
+    ]
+    const html = renderToStaticMarkup(
+      <Table
+        caption="Engagements"
+        columns={sortable}
+        rows={rows}
+        rowKey={(row) => row.id}
+        empty="None yet"
+        sort={{ columnId: 'hours', direction: 'ascending' }}
+        onSort={() => undefined}
+        detail={(row) => (row.id === 'a' ? <p>Working for Rila</p> : null)}
+      />,
+    )
+    expect(html.match(/<p>Working for Rila<\/p>/g)).toHaveLength(1)
+    expect(html).toContain('<td colSpan="2" class="border-b bg-surface px-2 py-2"><p>Working for Rila</p></td>')
+    // Sorted ascending, Solo comes first, and Rila's detail follows Rila, not the first row.
+    expect(html.indexOf('>Solo Bakery</td>')).toBeLessThan(html.indexOf('>Rila Logistics</td>'))
+    expect(html.indexOf('>Rila Logistics</td>')).toBeLessThan(html.indexOf('Working for Rila'))
+  })
+
+  it('renders no detail row when none is asked for', () => {
+    const rows: Row[] = [{ id: 'a', name: 'Rila Logistics', hours: 42 }]
+    const html = renderToStaticMarkup(<Table caption="Engagements" columns={columns} rows={rows} rowKey={(row) => row.id} empty="None yet" />)
+    expect(html.match(/<tr/g)).toHaveLength(2)
+  })
+
   it('renders cell text containing markup as text', () => {
     const rows: Row[] = [{ id: 'x', name: '<img src=x onerror=alert(1)>', hours: 1 }]
     const html = renderToStaticMarkup(<Table caption="Engagements" columns={columns} rows={rows} rowKey={(row) => row.id} empty="None yet" />)
